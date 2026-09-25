@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getGeminiModel, buildContextPrompt } from '@/lib/gemini';
+import { getGeminiModel, buildContextPrompt, SUPPORTED_MODELS } from '@/lib/gemini';
 import { fetchStockData, normalizeTicker, StockQuoteData } from '@/lib/yahoo-finance';
 
 export const dynamic = 'force-dynamic';
 
-// Helper to extract 4-letter Indonesian stock ticker or IHSG from text
 function detectTicker(text: string): string | null {
   if (/\b(ihsg|\^jkse|composite)\b/i.test(text)) {
     return '^JKSE';
@@ -12,7 +11,6 @@ function detectTicker(text: string): string | null {
   const match = text.match(/\b([A-Za-z]{4})(\.jk)?\b/i);
   if (match) {
     const candidate = match[1].toUpperCase();
-    // Exclude common Indonesian words with 4 letters that might conflict
     const excluded = ['FASE', 'STEP', 'AUTO', 'DARI', 'PADA', 'AKAN', 'BISA', 'YANG', 'IKUT', 'BUAT', 'USER', 'APSS', 'CHAT', 'DATA', 'VIEW', 'CEK'];
     if (!excluded.includes(candidate)) {
       return candidate;
@@ -30,7 +28,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, message: 'Prompt tidak boleh kosong.' }, { status: 400 });
     }
 
-    // Determine target ticker
     const resolvedTicker = inputTicker ? inputTicker.trim() : detectTicker(prompt);
     let stockData: StockQuoteData | null = null;
 
@@ -43,23 +40,39 @@ export async function POST(request: NextRequest) {
     }
 
     const enrichedPrompt = buildContextPrompt(prompt, stockData, broksumText);
-    const model = getGeminiModel();
 
-    // Setup chat or direct generation
-    const chat = model.startChat({
-      history: history.map((item: any) => ({
-        role: item.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: item.content || '' }],
-      })),
-    });
+    // Filter unique models to try in order
+    const candidateModels = Array.from(new Set(SUPPORTED_MODELS));
+    let lastError: any = null;
+    let streamResult: any = null;
 
-    const result = await chat.sendMessageStream(enrichedPrompt);
+    for (const modelCandidate of candidateModels) {
+      try {
+        const model = getGeminiModel(modelCandidate);
+        const chat = model.startChat({
+          history: history.map((item: any) => ({
+            role: item.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: item.content || '' }],
+          })),
+        });
 
-    // Stream the response back to client using ReadableStream
+        streamResult = await chat.sendMessageStream(enrichedPrompt);
+        break; // Successfully started stream
+      } catch (err: any) {
+        console.warn(`Model ${modelCandidate} failed:`, err.message);
+        lastError = err;
+        // Continue to next candidate model
+      }
+    }
+
+    if (!streamResult) {
+      throw lastError || new Error('Semua model Gemini sedang sibuk. Silakan coba kembali sesaat lagi.');
+    }
+
+    // Stream the response back to client
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        // First, emit a metadata event if stockData is available
         if (stockData) {
           const metaPayload = JSON.stringify({
             type: 'meta',
@@ -85,7 +98,7 @@ export async function POST(request: NextRequest) {
         }
 
         try {
-          for await (const chunk of result.stream) {
+          for await (const chunk of streamResult.stream) {
             const chunkText = chunk.text();
             if (chunkText) {
               const dataPayload = JSON.stringify({
@@ -97,7 +110,7 @@ export async function POST(request: NextRequest) {
           }
           controller.enqueue(encoder.encode(`event: done\ndata: {}\n\n`));
         } catch (streamErr: any) {
-          console.error('Streaming error:', streamErr);
+          console.error('Streaming error during iteration:', streamErr);
           const errPayload = JSON.stringify({
             type: 'error',
             message: streamErr.message || 'Stream generation failed.',

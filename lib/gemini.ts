@@ -7,17 +7,24 @@ export interface ChatMessage {
   content: string;
 }
 
-export function getGeminiModel() {
+export const SUPPORTED_MODELS = [
+  process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.8-flash',
+];
+
+export function getGeminiModel(modelName?: string) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY belum dikonfigurasi di Environment Variables (.env.local / Vercel).');
   }
 
-  const modelName = process.env.GEMINI_MODEL || 'gemini-1.5-pro';
+  const selectedModel = modelName || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
   const genAI = new GoogleGenerativeAI(apiKey);
 
   return genAI.getGenerativeModel({
-    model: modelName,
+    model: selectedModel,
     systemInstruction: IDX_PRO_SYSTEM_INSTRUCTION,
     generationConfig: {
       temperature: 0.2, // Low temperature for high analytical discipline and accuracy

@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { IDX_PRO_SYSTEM_INSTRUCTION } from './system-prompt';
 import { StockQuoteData } from './yahoo-finance';
+import { parseBroksumText, formatRupiahShort } from './broksum-parser';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -63,12 +64,47 @@ export function buildContextPrompt(
   }
 
   if (broksumText && broksumText.trim().length > 0) {
-    context += `\n--- DATA BROKER SUMMARY (INPUT DARI PENGGUNA) ---\n`;
-    context += `${broksumText.trim()}\n`;
-    context += `--- AKHIR DATA BROKER SUMMARY ---\n\n`;
+    const parsed = parseBroksumText(broksumText, stockData?.tickerClean || '');
+    if (parsed.hasData) {
+      context += `\n--- DATA BROKER SUMMARY & BANDARMOLOGY (OPENAPI FORMAT) ---\n`;
+      context += `Status / Label Evaluasi: ${parsed.label} (Score: ${parsed.score > 0 ? '+' : ''}${parsed.score}/100, Confidence: ${parsed.confidence.toFixed(2)})\n`;
+      context += `Bandar Value (Top 3): ${formatRupiahShort(parsed.bandarValue3)}\n`;
+      context += `Bandar Value (Top 5): ${formatRupiahShort(parsed.bandarValue5)}\n`;
+      context += `Konsentrasi Buyer: Top 1 = ${parsed.buyerConcentration.top1}%, Top 3 = ${parsed.buyerConcentration.top3}%, Top 5 = ${parsed.buyerConcentration.top5}%\n`;
+      context += `Konsentrasi Seller: Top 1 = ${parsed.sellerConcentration.top1}%, Top 3 = ${parsed.sellerConcentration.top3}%, Top 5 = ${parsed.sellerConcentration.top5}%\n`;
+      if (parsed.foreignFlow !== null) {
+        context += `Net Foreign Flow: ${formatRupiahShort(parsed.foreignFlow)}\n`;
+      }
+      if (parsed.totalTradedValue !== null) {
+        context += `Total Traded Value: ${formatRupiahShort(parsed.totalTradedValue)}\n`;
+      }
+      context += `\nTop Net Buyer:\n`;
+      parsed.topBuyers.forEach((b, i) => {
+        context += `${i + 1}. ${b.broker} [${b.category}]: ${b.lot.toLocaleString('id-ID')} lot @ Avg ${b.avgPrice} (Nilai: ${formatRupiahShort(b.value)})\n`;
+      });
+      context += `\nTop Net Seller:\n`;
+      parsed.topSellers.forEach((s, i) => {
+        context += `${i + 1}. ${s.broker} [${s.category}]: ${s.lot.toLocaleString('id-ID')} lot @ Avg ${s.avgPrice} (Nilai: ${formatRupiahShort(s.value)})\n`;
+      });
+      if (parsed.reasons.length > 0) {
+        context += `\nFakta Analitik Bandarmology:\n`;
+        parsed.reasons.forEach((r) => {
+          context += `- ${r}\n`;
+        });
+      }
+      context += `\nOpenAPI 3.1.0 Schemas (BroksumGenericResponse & BandarmologyGenericResponse):\n`;
+      context += `Broksum JSON: ${JSON.stringify(parsed.openApiBroksum)}\n`;
+      context += `Bandarmology JSON: ${JSON.stringify(parsed.openApiBandarmology)}\n`;
+      context += `--- AKHIR DATA BROKER SUMMARY & BANDARMOLOGY ---\n\n`;
+    } else {
+      context += `\n--- DATA BROKER SUMMARY (INPUT DARI PENGGUNA) ---\n`;
+      context += `${broksumText.trim()}\n`;
+      context += `--- AKHIR DATA BROKER SUMMARY ---\n\n`;
+    }
   } else if (stockData) {
     context += `\n[CATATAN DATA: Pengguna belum menempelkan tabel Broker Summary (Broksum) khusus. Lakukan analisa teknikal & Elliott Wave berdasarkan data harga/volume di atas, dan nyatakan bahwa broksum belum dilampirkan].\n\n`;
   }
 
   return `${context}Permintaan Pengguna: "${userPrompt}"`;
 }
+

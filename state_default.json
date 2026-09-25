@@ -1,0 +1,23 @@
+{
+  "session_id": null,
+  "active_ticker": null,
+  "active_market_type": null,
+  "active_workflow": null,
+  "active_eod_status": "belum_ada",
+  "active_data_source": null,
+  "active_data_format": null,
+  "active_phase": null,
+  "active_mode": null,
+  "active_lookback": null,
+  "active_style": null,
+  "active_risk_profile": null,
+  "active_analysis_result": null,
+  "active_broksum_period": null,
+  "active_broksum_status": "belum_ada",
+  "active_factor_status": "belum_ada",
+  "latest_available_date": null,
+  "pending_render_approval": false,
+  "render_phase": null,
+  "last_interaction_id": null,
+  "updated_at": null
+}

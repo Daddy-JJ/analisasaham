@@ -1,0 +1,91 @@
+{
+  "purpose": "Daftar knowledge files untuk Gemini IDX Pro. Upload/attach sesuai prioritas.",
+  "upload_order": [
+    {
+      "priority": 1,
+      "file": "01_KB_ROUTER_STATE_CARRYOVER_V22_3.md",
+      "role": "router & state source of truth"
+    },
+    {
+      "priority": 2,
+      "file": "02_KB_EOD_IHSG_FILEURL_ONLY_V22.md",
+      "role": "hard rule EOD/IHSG"
+    },
+    {
+      "priority": 3,
+      "file": "03_KB_WORKFLOW_EW_IHSG_V22.md",
+      "role": "workflow EW/IHSG"
+    },
+    {
+      "priority": 4,
+      "file": "04_KB_MAXSCREENER_DEEP_ENGINE_V22.md",
+      "role": "MaxScreener engine/output"
+    },
+    {
+      "priority": 5,
+      "file": "05_KB_BANDARMOLOGY_FACTOR_STACK_ADVANCED_V22_6.md",
+      "role": "Bandarmology current advanced source of truth"
+    },
+    {
+      "priority": 6,
+      "file": "07_KB_PNG_SAFE_RENDER_QA_V22.md",
+      "role": "render guardrail"
+    },
+    {
+      "priority": 7,
+      "file": "09_KB_CLARIFICATION_NEXTSTEP_UX_V22_6_4ROUTE.md",
+      "role": "UX & next steps"
+    },
+    {
+      "priority": 8,
+      "file": "08_KB_OUTPUT_FORMAT_TESTCASES_V22.md",
+      "role": "regression expectations"
+    },
+    {
+      "priority": 9,
+      "file": "Elliott_Wave_Principle_-_Frost_and_Prechter(Capsule Summary).pdf",
+      "role": "EW primary reference"
+    },
+    {
+      "priority": 10,
+      "file": "PineScript MaX V7.30 source.txt",
+      "role": "MaX signal logic source"
+    },
+    {
+      "priority": 11,
+      "file": "01_KB_BANDARMOLOGY_COMPACT_CORE_V1.md",
+      "role": "legacy/compact supporting KB; advanced V22.6 wins on conflict"
+    },
+    {
+      "priority": 12,
+      "file": "Analisis broker Indonesia.pdf",
+      "role": "broker classification supporting reference; use caveats"
+    },
+    {
+      "priority": 13,
+      "file": "DESIGN_REF_PNG_FASE1.py",
+      "role": "design reference only"
+    },
+    {
+      "priority": 14,
+      "file": "DESIGN_REF_PNG_FASE2.py",
+      "role": "design reference only"
+    },
+    {
+      "priority": 15,
+      "file": "DESIGN_REF_PNG_FASE3.py",
+      "role": "design reference only"
+    },
+    {
+      "priority": 16,
+      "file": "DESIGN_REF_PNG_FASE4.py",
+      "role": "design reference only"
+    }
+  ],
+  "conflict_rules": [
+    "System Instruction wins over knowledge files.",
+    "05_KB_BANDARMOLOGY_FACTOR_STACK_ADVANCED_V22_6.md wins over older Bandarmology compact rules when behavior conflicts.",
+    "02_KB_EOD_IHSG_FILEURL_ONLY_V22.md wins for EOD/IHSG format decisions.",
+    "Design reference scripts are layout/style references only, never data or narrative sources."
+  ]
+}

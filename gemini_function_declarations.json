@@ -1,0 +1,1206 @@
+{
+  "schema_version": "gemini_function_declarations_v1",
+  "notes": [
+    "Format mengikuti Gemini Interactions/API function declarations: type=function, name, description, parameters.",
+    "Tool execution dilakukan oleh aplikasi/backend, bukan oleh model.",
+    "Jangan hard-code API base URL di system instruction."
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "name": "getBandarmologyTickerFactors",
+      "description": "Mengambil factor stack harian lengkap satu ticker: foreign flow, net foreign MA10/MA20, foreign flow MA20/MA50, streak, Bandar Value MA10/MA20, previous Bandar Value, dan range flow.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham, contoh BBCA atau PGAS."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "topN": {
+            "type": "integer",
+            "description": "Jumlah top net buyer/seller untuk Bandar Value, 1-10."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBandarmologyForeignFlowMa",
+      "description": "Mengambil cumulative Foreign Flow, moving average, dan rebased series. window hanya 20 atau 50.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "window": {
+            "type": "integer",
+            "description": "Window MA.",
+            "enum": [
+              20,
+              50
+            ]
+          },
+          "topN": {
+            "type": "integer",
+            "description": "Top N broker, 1-10."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBandarmologyNetForeignMa",
+      "description": "Mengambil Net Foreign Buy/Sell harian dan moving average. window hanya 10 atau 20.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "window": {
+            "type": "integer",
+            "description": "Window MA.",
+            "enum": [
+              10,
+              20
+            ]
+          },
+          "topN": {
+            "type": "integer",
+            "description": "Top N broker, 1-10."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBandarmologyNetForeignStreak",
+      "description": "Mengambil streak harian net foreign buy dan sell.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "topN": {
+            "type": "integer",
+            "description": "Top N broker, 1-10."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBandarmologyNetForeignFlow",
+      "description": "Menjumlahkan Net Foreign Flow untuk periode 1w, 1m, 3m, 6m, 1y, atau ytd.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "period": {
+            "type": "string",
+            "description": "Periode agregasi.",
+            "enum": [
+              "1w",
+              "1m",
+              "3m",
+              "6m",
+              "1y",
+              "ytd"
+            ]
+          },
+          "topN": {
+            "type": "integer",
+            "description": "Top N broker, 1-10."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBandarmologyBandarValueMa",
+      "description": "Mengambil Bandar Value dan moving average. Bandar Value = top-N net buyer value dikurangi absolute top-N net seller value. window 10 atau 20.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "window": {
+            "type": "integer",
+            "description": "Window MA.",
+            "enum": [
+              10,
+              20
+            ]
+          },
+          "topN": {
+            "type": "integer",
+            "description": "Top N broker, 1-10."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBandarmologyPreviousBandarValue",
+      "description": "Membandingkan Bandar Value target date dengan trading date sebelumnya.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "date": {
+            "type": "string",
+            "description": "Target trading date opsional; default latest. Format YYYY-MM-DD."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "topN": {
+            "type": "integer",
+            "description": "Top N broker, 1-10."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBroksumAvailability",
+      "description": "Mengambil ketersediaan tanggal broker summary dan optional coverage ticker.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker opsional."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBroksumTickerHistory",
+      "description": "Mengambil daily broker-summary flow ticker: foreign/local net, top buyers/sellers, concentration, EOD close, NBSA, turnover metrics.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "order": {
+            "type": "string",
+            "description": "Sort order date.",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "topN": {
+            "type": "integer",
+            "description": "Top net buyers/sellers tiap hari, 1-20."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maksimum records, 1-1000."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBroksumTickerBrokers",
+      "description": "Mengagregasi buy/sell flow broker untuk satu ticker dan range; gunakan untuk mencari accumulator/distributor.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "broker": {
+            "type": "string",
+            "description": "Kode broker opsional, contoh GR, BK, YP."
+          },
+          "sort": {
+            "type": "string",
+            "description": "Sort mode.",
+            "enum": [
+              "net_value_desc",
+              "net_value_asc",
+              "buy_value_desc",
+              "sell_value_desc",
+              "ticker_asc"
+            ]
+          },
+          "includeDaily": {
+            "type": "boolean",
+            "description": "True untuk menyertakan daily rows tiap broker."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maksimum records, 1-1000."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBroksumMarketRanking",
+      "description": "Ranking seluruh ticker pada satu date berdasarkan broker flow, normalized strength, foreign flow, concentration, atau value.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Trading date opsional; default latest. Format YYYY-MM-DD."
+          },
+          "side": {
+            "type": "string",
+            "description": "Ranking mode.",
+            "enum": [
+              "accumulation",
+              "distribution",
+              "accumulation_strength",
+              "distribution_strength",
+              "net_foreign_buy",
+              "net_foreign_sell",
+              "foreign_accumulation",
+              "foreign_distribution",
+              "concentration",
+              "value"
+            ]
+          },
+          "topN": {
+            "type": "integer",
+            "description": "Top N broker aggregate, 1-10."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maksimum records, 1-1000."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBroksumMarketPressure",
+      "description": "Trader-oriented market scan untuk accumulation, distribution, absorption, foreign, churn, atau value.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Trading date opsional; default latest. Format YYYY-MM-DD."
+          },
+          "mode": {
+            "type": "string",
+            "description": "Pressure ranking mode.",
+            "enum": [
+              "accumulation",
+              "distribution",
+              "absorption",
+              "foreign",
+              "churn",
+              "value"
+            ]
+          },
+          "topN": {
+            "type": "integer",
+            "description": "Top N broker aggregate, 1-10."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maksimum records, 1-1000."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBroksumMarketQuadrant",
+      "description": "Mengklasifikasi ticker berdasarkan price direction dan selected broker flow.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Trading date opsional; default latest. Format YYYY-MM-DD."
+          },
+          "flow": {
+            "type": "string",
+            "description": "Flow source.",
+            "enum": [
+              "smart",
+              "foreign",
+              "total"
+            ]
+          },
+          "includeNeutral": {
+            "type": "boolean",
+            "description": "Sertakan flat/neutral rows."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBroksumRaw",
+      "description": "Mengambil raw broker summary untuk satu ticker dan date; gunakan hanya untuk tanggal/broker penting, bukan periode panjang.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "date": {
+            "type": "string",
+            "description": "Trading date opsional; default latest. Format YYYY-MM-DD."
+          },
+          "broker": {
+            "type": "string",
+            "description": "Kode broker opsional."
+          },
+          "transactionType": {
+            "type": "string",
+            "description": "Transaction side.",
+            "enum": [
+              "BUY",
+              "SELL"
+            ]
+          },
+          "investorGroup": {
+            "type": "string",
+            "description": "Investor group.",
+            "enum": [
+              "FOREIGN",
+              "LOCAL",
+              "GOVERNMENT"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maksimum records, 1-1000."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBroksumBrokerHistory",
+      "description": "Melacak satu broker pada ticker tertentu atau market. Tanpa ticker range perlu dibatasi karena scan banyak file.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "broker": {
+            "type": "string",
+            "description": "Kode broker, contoh GR, BK, YP."
+          },
+          "ticker": {
+            "type": "string",
+            "description": "Ticker opsional."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "sort": {
+            "type": "string",
+            "description": "Sort mode.",
+            "enum": [
+              "net_value_desc",
+              "net_value_asc",
+              "buy_value_desc",
+              "sell_value_desc",
+              "ticker_asc",
+              "date_asc",
+              "date_desc"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maksimum records, 1-1000."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "broker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBroksumTickerAbsorption",
+      "description": "Menghasilkan daily accumulation/distribution/absorption/churn score untuk ticker; berguna mendeteksi quiet accumulation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "order": {
+            "type": "string",
+            "description": "Sort date.",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maksimum records, 1-1000."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBroksumTickerRotation",
+      "description": "Membandingkan broker net flow dua periode untuk ticker; gunakan normalized sort bila panjang periode berbeda.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Range start opsional untuk auto-period. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Range end opsional untuk auto-period. Format YYYY-MM-DD."
+          },
+          "fromStart": {
+            "type": "string",
+            "description": "Periode pertama start. Format YYYY-MM-DD."
+          },
+          "fromEnd": {
+            "type": "string",
+            "description": "Periode pertama end. Format YYYY-MM-DD."
+          },
+          "toStart": {
+            "type": "string",
+            "description": "Periode kedua start. Format YYYY-MM-DD."
+          },
+          "toEnd": {
+            "type": "string",
+            "description": "Periode kedua end. Format YYYY-MM-DD."
+          },
+          "recentDays": {
+            "type": "integer",
+            "description": "Jumlah trading day periode terbaru, 1-60."
+          },
+          "priorDays": {
+            "type": "integer",
+            "description": "Jumlah trading day periode sebelumnya, 1-60."
+          },
+          "sort": {
+            "type": "string",
+            "description": "Rotation sort.",
+            "enum": [
+              "delta_abs_desc",
+              "delta_desc",
+              "delta_asc",
+              "delta_per_day_abs_desc",
+              "delta_per_day_desc",
+              "delta_per_day_asc",
+              "to_net_desc",
+              "to_net_asc",
+              "broker_asc"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maksimum records, 1-1000."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBroksumTickerInsight",
+      "description": "Menggabungkan signal, absorption, broker table, bullish evidence, bearish evidence. confidence adalah evidence quality, bukan outcome probability.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getBroksumSignal",
+      "description": "Merangkum broker flow menjadi accumulation/distribution signal dengan score, evidence-quality confidence, reasons, dan caveats; bukan outcome probability.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "compareBroksumPeriods",
+      "description": "Membandingkan broker flow antara dua custom periods untuk satu ticker.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "fromStart": {
+            "type": "string",
+            "description": "Periode pertama start. Format YYYY-MM-DD."
+          },
+          "fromEnd": {
+            "type": "string",
+            "description": "Periode pertama end. Format YYYY-MM-DD."
+          },
+          "toStart": {
+            "type": "string",
+            "description": "Periode kedua start. Format YYYY-MM-DD."
+          },
+          "toEnd": {
+            "type": "string",
+            "description": "Periode kedua end. Format YYYY-MM-DD."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        },
+        "required": [
+          "ticker",
+          "fromStart",
+          "fromEnd",
+          "toStart",
+          "toEnd"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "exportBroksumData",
+      "description": "Mengekspor history, brokers aggregate, atau raw broksum data.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham."
+          },
+          "type": {
+            "type": "string",
+            "description": "Export type.",
+            "enum": [
+              "history",
+              "brokers",
+              "raw"
+            ]
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Tanggal mulai opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Tanggal akhir opsional. Format YYYY-MM-DD."
+          },
+          "date": {
+            "type": "string",
+            "description": "Tanggal raw; diperlukan untuk type=raw kecuali latest dapat diterima. Format YYYY-MM-DD."
+          },
+          "broker": {
+            "type": "string",
+            "description": "Filter kode broker opsional."
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maksimum records, 1-1000."
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getScreenerMaxResults",
+      "description": "Mengambil cached MaxScreener IDX technical screening results dari export terbaru.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Single ticker atau comma-separated tickers."
+          },
+          "tickers": {
+            "type": "string",
+            "description": "Alias watchlist comma-separated."
+          },
+          "filter": {
+            "type": "string",
+            "description": "Filter group.",
+            "enum": [
+              "all",
+              "signals",
+              "reversal",
+              "momentum",
+              "breakout",
+              "passive",
+              "risk"
+            ]
+          },
+          "signal": {
+            "type": "string",
+            "description": "Exact signal, contoh SMART SNIPER, SMART GAMMA, G ACC, BETA BREAKOUT."
+          },
+          "regime": {
+            "type": "string",
+            "description": "RISEN regime filter."
+          },
+          "quadrant": {
+            "type": "string",
+            "description": "Relative-strength quadrant.",
+            "enum": [
+              "LEADING",
+              "IMPROVING",
+              "WEAKENING",
+              "LAGGING",
+              "N/A"
+            ]
+          },
+          "minScore": {
+            "type": "number",
+            "description": "Minimum screener score."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Maksimum records, 1-1000."
+          },
+          "sort": {
+            "type": "string",
+            "description": "Sort order.",
+            "enum": [
+              "score_desc",
+              "score_asc",
+              "change_desc",
+              "change_asc",
+              "ticker_asc"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format.",
+            "enum": [
+              "json",
+              "csv",
+              "file_url"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "getEodHistory",
+      "description": "Mengambil raw EOD history satu ticker. Untuk semua analisa EOD, gunakan format=file_url; csv hanya fallback; jangan JSON.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "ticker": {
+            "type": "string",
+            "description": "Ticker saham, contoh BBCA."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Custom start date opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Custom end date opsional. Format YYYY-MM-DD."
+          },
+          "order": {
+            "type": "string",
+            "description": "Sort order.",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format. Untuk analisa EOD/IHSG gunakan file_url; csv hanya fallback.",
+            "enum": [
+              "file_url",
+              "json",
+              "csv"
+            ]
+          }
+        },
+        "required": [
+          "ticker"
+        ]
+      }
+    },
+    {
+      "type": "function",
+      "name": "getEodBulkHistory",
+      "description": "Membangun bulk OHLCV dataset untuk full-market atau subset screening; file_url direkomendasikan untuk full market.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "tickers": {
+            "type": "string",
+            "description": "Comma/space-separated ticker subset; omit untuk universe endDate."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Inclusive start date; jika diberikan lookback diabaikan. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Inclusive market/as-of date; default latest. Format YYYY-MM-DD."
+          },
+          "lookback": {
+            "type": "integer",
+            "description": "Most recent bars per ticker, 1-260."
+          },
+          "minRecords": {
+            "type": "integer",
+            "description": "Minimum rows agar history sufficient, 1-260."
+          },
+          "format": {
+            "type": "string",
+            "description": "file_url direkomendasikan untuk full market.",
+            "enum": [
+              "file_url",
+              "json",
+              "csv"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "getIhsgHistory",
+      "description": "Mengambil raw IHSG index EOD history. Untuk analisa IHSG gunakan file_url; csv hanya fallback; jangan JSON.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "description": "Custom start date opsional. Format YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Custom end date opsional. Format YYYY-MM-DD."
+          },
+          "order": {
+            "type": "string",
+            "description": "Sort order.",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          },
+          "format": {
+            "type": "string",
+            "description": "Response format. Untuk analisa EOD/IHSG gunakan file_url; csv hanya fallback.",
+            "enum": [
+              "file_url",
+              "json",
+              "csv"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "name": "getEodMarketSnapshot",
+      "description": "Mengambil seluruh ticker EOD pada satu market date untuk movers, top value/volume/frequency, gainers/losers, atau IHSG impact.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Market date opsional; default latest. Format YYYY-MM-DD."
+          },
+          "orderBy": {
+            "type": "string",
+            "description": "Sort mode.",
+            "enum": [
+              "ticker",
+              "change_desc",
+              "change_asc",
+              "value_desc",
+              "volume_desc",
+              "frequency_desc"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Optional max rows, 1-2000."
+          }
+        }
+      }
+    }
+  ]
+}

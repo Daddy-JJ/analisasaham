@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "IDXProSessionState",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "active_ticker": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Uppercase ticker aktif."
+    },
+    "active_market_type": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "saham",
+        "IHSG",
+        null
+      ]
+    },
+    "active_workflow": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "EW",
+        "IHSG",
+        "MaxScreener",
+        "Bandarmology",
+        "PNG",
+        null
+      ]
+    },
+    "active_eod_status": {
+      "type": "string",
+      "enum": [
+        "belum_ada",
+        "tersedia",
+        "gagal"
+      ]
+    },
+    "active_data_source": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "action",
+        "csv_fallback",
+        "user_file",
+        null
+      ]
+    },
+    "active_data_format": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "file_url_csv",
+        "csv_inline",
+        "fallback_csv",
+        null
+      ]
+    },
+    "active_phase": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "maximum": 4
+    },
+    "active_mode": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "STEP",
+        "SEQUENTIAL",
+        null
+      ]
+    },
+    "active_lookback": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "active_style": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "ringkas",
+        "standar",
+        "mendalam",
+        null
+      ]
+    },
+    "active_risk_profile": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "konservatif",
+        "moderat",
+        "agresif",
+        null
+      ]
+    },
+    "active_analysis_result": {
+      "type": [
+        "object",
+        "string",
+        "null"
+      ]
+    },
+    "active_broksum_period": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "startDate": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "endDate": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "active_broksum_status": {
+      "type": "string",
+      "enum": [
+        "belum_ada",
+        "tersedia",
+        "gagal"
+      ]
+    },
+    "active_factor_status": {
+      "type": "string",
+      "enum": [
+        "belum_ada",
+        "tersedia",
+        "gagal"
+      ]
+    },
+    "latest_available_date": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date"
+    },
+    "pending_render_approval": {
+      "type": "boolean"
+    },
+    "render_phase": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "maximum": 4
+    },
+    "last_interaction_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "active_eod_status",
+    "active_broksum_status",
+    "active_factor_status",
+    "pending_render_approval"
+  ]
+}

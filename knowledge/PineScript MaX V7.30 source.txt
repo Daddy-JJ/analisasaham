@@ -1,0 +1,2538 @@
+// © MaX V7.30 - Portfolio Manager Edition (WITH RISEN INTEGRATION & SMART GAMMA)
+// Role: Senior Quant Developer
+// Features: 
+// 1. [NEW] PORTFOLIO MANAGER SYSTEM (3 Custom Slots + Default)
+// 2. [NEW] SMART GAMMA (Logic Filtered by RISEN Structure)
+// 3. [INTEGRATION] RISEN (Boxes Illusix) Logic & Visuals
+// 4. [FIXED] SL VISUALIZATION (Kill Switch Logic)
+
+//@version=6
+indicator('MaX V7.30 - Smart Gamma Edition', overlay = true, max_lines_count = 500, max_boxes_count = 500, max_labels_count = 500)
+
+// ==========================================
+// 1. INPUTS (REORGANIZED FOR UX)
+// ==========================================
+
+// ------------------------------------------------------
+// GROUP 1: MAIN CONFIGURATION & DISPLAY
+// ------------------------------------------------------
+grp_main    = "⚙️ Main Config & Panel"
+panel_mode  = input.string("Insight HUD", "Mode Tampilan", options=["Scanner", "Insight HUD", "Both", "None"], group=grp_main)
+left_pos    = input.string(position.middle_left, "Posisi Panel Kiri", options=[position.top_left, position.middle_left, position.bottom_left], group=grp_main)
+txt_size_left = input.string(size.small, "Ukuran Text Kiri", options=[size.tiny, size.small, size.normal], group=grp_main)
+show_panel  = input.bool(true, "Tampilkan Panel Kanan?", group=grp_main)
+
+grp_date    = "📅 Date Filter"
+use_date_filter = input.bool(false, '🔎 Aktifkan Filter Tanggal?', group = grp_date)
+filter_start = input.time(timestamp("01 Jan 2024"), "Mulai Tanggal", group=grp_date)
+filter_end   = input.time(timestamp("30 Dec 2025"), "Sampai Tanggal", group=grp_date)
+
+// ------------------------------------------------------
+// GROUP 2: STRATEGY LOGIC, QUANT & FILTERS
+// ------------------------------------------------------
+grp_logic   = "🧠 Strategy Logic & Filters"
+// Winrate Opt
+use_fvg_filt = input.bool(true, "Wajib FVG/Imbalance?", group=grp_logic, tooltip="Validasi entry harus di area FVG Bullish")
+// Safety Gamma
+gamma_agresif = input.bool(false, "🔥 LEPAS SAFETY GAMMA?", group=grp_logic)
+// Logic Settings
+lookback_len = input.int(150, "Periode Cek Demand", group=grp_logic)
+v_vol_factor = input.float(1.3, "V-Shape Volume Factor", minval=1.0, step=0.1, group=grp_logic)
+use_crash_filt = input.bool(false, "Aktifkan Anti-Crash (ADX)?", group=grp_logic)
+adx_limit    = input.int(30, "Batas Kekuatan Crash", minval=20, group=grp_logic)
+// Structure
+pivot_left   = input.int(5, "Pivot Left Bars (Struktur)", minval=2, group=grp_logic)
+pivot_right  = input.int(1, "Pivot Right Bars (Struktur)", minval=1, group=grp_logic)
+
+grp_quant    = "📊 Quant & Benchmark Data"
+bench_sym    = input.symbol("IDX:COMPOSITE", "Benchmark Symbol (IHSG)", group=grp_quant)
+// Alpha Isolation
+use_auto_sec = input.bool(true, "Auto-Detect Sector?", group=grp_quant, tooltip="Jika ON, script akan menebak sektor berdasarkan data TradingView. Jika OFF, akan menggunakan input Manual di bawah.")
+man_sect_sym = input.symbol("IDX:COMPOSITE", "Manual Sector Benchmark", group=grp_quant)
+risk_lookback = input.int(252, "Risk Lookback (Days)", minval=20, group=grp_quant)
+rf_rate_pct  = input.float(6.0, "Risk Free Rate (%)", step=0.5, group=grp_quant)
+
+grp_quad     = "📊 Quadrant Filter"
+bench_primary = input.symbol("IDX:COMPOSITE", "Benchmark Symbol", group=grp_quad)
+bench_fallbacks = input.string("IDX:COMPOSITE, COMPOSITE, IHSG", "Benchmark Fallback", group=grp_quad)
+use_quad_filter = input.bool(false, "⛔ Filter Sinyal jika Lagging?", group=grp_quad)
+
+// ------------------------------------------------------
+// GROUP 3: VISUALS, COLORS & STYLING
+// ------------------------------------------------------
+grp_vis      = "🎨 Chart Visuals (Objects)"
+show_candles = input.bool(true, 'Warnai Candlestick (MaX)?', group = grp_vis)
+show_emas    = input.bool(true, 'Tampilkan EMA?', group = grp_vis)
+show_ob      = input.bool(true, 'Tampilkan Kotak Demand?', group = grp_vis)
+show_struct_lbl = input.bool(true, 'Tampilkan Label HH/LL?', group = grp_vis)
+show_div     = input.bool(true, "Tampilkan Label RSI Divergence?", group=grp_vis)
+
+grp_sr       = "🧱 Smart S/R Zones"
+show_ghost_sr = input.bool(true, "Tampilkan Smart S/R Zones?", group=grp_sr)
+sr_calc_mode = input.string("Smart (Auto-Detect)", "Mode Zona S/R", options=["Smart (Auto-Detect)", "Wick (Ekor)", "Body (Badan)"], group=grp_sr)
+sr_strength  = input.int(5, "Kekuatan Pivot S/R", minval=3, group=grp_sr)
+hide_broken  = input.bool(true, "Auto-Hapus Zone Jebol?", group=grp_sr)
+sr_lookback  = input.int(6, "Max Active Zones", minval=1, maxval=20, group=grp_sr)
+
+grp_col_ind  = "🎨 Indicator Colors"
+c_ema1_in    = input.color(#2979FF, "Warna EMA 1 (21)", group=grp_col_ind)
+c_ema2_in    = input.color(#FF9800, "Warna EMA 2 (50)", group=grp_col_ind)
+c_ema3_in    = input.color(#E53935, "Warna EMA 3 (200)", group=grp_col_ind)
+c_up_fix     = input.color(#00E676, "Warna Supertrend BULL", group=grp_col_ind)
+c_dn_fix     = input.color(#FF1744, "Warna Supertrend BEAR", group=grp_col_ind)
+
+grp_style    = "💎 Signal Styling (Shape & Color)"
+show_signals = input.bool(true, 'Tampilkan Label Sinyal?', group = grp_style)
+c_sniper_in  = input.color(#00E5FF, "Sniper Color", group=grp_style)
+s_sniper_in  = input.string("Triangle Up", "Sniper Shape", options=["Triangle Up", "Triangle Down", "Circle", "Square", "Diamond", "Label Up", "Label Down"], group=grp_style)
+c_beta_in    = input.color(#2962FF, "Beta Color", group=grp_style)
+s_beta_in    = input.string("Square", "Beta Shape", options=["Triangle Up", "Triangle Down", "Circle", "Square", "Diamond", "Label Up", "Label Down"], group=grp_style)
+c_gamma_in   = input.color(#FFD700, "Gamma Color", group=grp_style)
+s_gamma_in   = input.string("Label Up", "Gamma Shape", options=["Triangle Up", "Triangle Down", "Circle", "Square", "Diamond", "Label Up", "Label Down"], group=grp_style)
+c_vshape_in  = input.color(#D500F9, "V-Shape Color", group=grp_style)
+s_vshape_in  = input.string("Diamond", "V-Shape Shape", options=["Triangle Up", "Triangle Down", "Circle", "Square", "Diamond", "Label Up", "Label Down"], group=grp_style)
+c_early_in   = input.color(#FF6D00, "Early Color", group=grp_style)
+s_early_in   = input.string("Circle", "Early Shape", options=["Triangle Up", "Triangle Down", "Circle", "Square", "Diamond", "Label Up", "Label Down"], group=grp_style)
+
+// ------------------------------------------------------
+// GROUP 4: INTEGRATIONS (RISEN & X-RAY)
+// ------------------------------------------------------
+grp_risen     = "📦 RISEN (Boxes Illusix)"
+show_risen    = input.bool(false, "Show RISEN Features?", group=grp_risen)
+r_thresh_pct  = input.float(2.0, "Explosive/Crash Threshold (%)", step=0.1, minval=0.0, group=grp_risen)
+r_lookback_y  = input.int(3,     "Breakout Lookback (bars)",       minval=1, maxval=200, group=grp_risen)
+r_vol_mult    = input.float(2.0, "Volume Multiplier vs SMA(15)",  step=0.1, minval=0.0, group=grp_risen)
+r_useScored   = input.bool(true, "Use Scored Consolidation", group=grp_risen)
+r_showMap     = input.bool(true, "Show Map Zones", group=grp_risen)
+r_showDiag    = input.bool(true, "Show Diagonal Channel", group=grp_risen)
+r_mapOp       = input.int(85,    "Map Opacity", minval=0, maxval=100, group=grp_risen)
+r_tintRegime  = input.bool(true, "Paint Candles by Regime (Overwrites MaX)", group=grp_risen)
+// Hardcoded RISEN defaults (hidden variables kept for logic)
+r_atrLen = 14, r_atrBaseLen = 50, r_atrCompMult = 0.75
+r_scoreThrNormal = 70, r_scoreThrPostShock = 60
+r_consBarsNormal = 15, r_consBarsFast = 5, r_postShockBars = 40
+
+grp_xray      = "🔬 Volume X-Ray (Deep Scan)"
+use_xray      = input.bool(true, "Aktifkan X-Ray Coloring?", group=grp_xray, tooltip="Menggunakan data Intraday untuk mewarnai candle Harian (Berat tapi Akurat).")
+xray_tf       = input.string("15", "Intraday Resolution", options=["1", "5", "15", "30", "60"], group=grp_xray, tooltip="Semakin kecil angka, semakin akurat tapi semakin berat loadingnya.")
+
+// ------------------------------------------------------
+// GROUP 5: TRADING PLAN & TRAILING
+// ------------------------------------------------------
+grp_plan      = "📝 Trading Plan Lines"
+show_buy_lines = input.bool(true, "Tampilkan Garis Buy 1-4?", group=grp_plan)
+show_tp_sl    = input.bool(true, "Tampilkan Area TP & SL?", group=grp_plan)
+buy_txt_size  = input.string(size.small, "Ukuran Text Label Buy", options=[size.auto, size.tiny, size.small, size.normal, size.large], group=grp_plan)
+
+grp_trail     = "🔒 Profit Locker (Dynamic Trailing)"
+use_trail     = input.bool(true, "Aktifkan Profit Locker?", group=grp_trail)
+force_be      = input.bool(true, "Wajib Risk Free (BE) saat TP1?", group=grp_trail, tooltip="ON: SL minimal di harga Entry setelah TP1 (Aman). OFF: SL ikut murni ATR Trailing (Beri nafas utk retest).")
+trail_src     = input.source(low, "Sumber Harga Trailing", group=grp_trail)
+trail_mult    = input.float(1.5, "Trailing ATR Multiplier", minval=0.5, step=0.1, group=grp_trail)
+
+// ------------------------------------------------------
+// GROUP 6: PORTFOLIO MANAGER (THE SLOTS)
+// ------------------------------------------------------
+// --- DEFAULT SETTINGS ---
+grp_def       = "📁 PORTFOLIO: DEFAULT / GENERAL"
+def_equity    = input.float(100000000, "Default Modal (Rp)", minval=100000, step=1000000, group=grp_def)
+def_strat     = input.string("Full Grid (1-2-3-4)", "Default Strategy", options=["Full Grid (1-2-3-4)", "Extreme Dip (3-4)", "Sweet Spot (2-3)", "Mid-Reversal (2-4)", "Deep Value (1-3-4)", "The Gap (1-2-4)", "Sniper (1-3)", "Aggressive (1-2)"], group=grp_def)
+def_fee_pct   = input.float(0.15, "Fee Beli Sekuritas (%)", minval=0.0, step=0.01, group=grp_def)
+
+grp_def_man   = "📁 PORTFOLIO: Manual & Avg Up"
+def_use_man   = input.bool(false, "Aktifkan Harga Buy 1 Manual?", group=grp_def_man, tooltip="Centang untuk override entry price.")
+def_man_pr    = input.float(0, "Harga Entry Buy 1 Anda", group=grp_def_man)
+def_use_avg   = input.bool(false, "🔥 Mode Average Up (Pyramiding)?", group=grp_def_man, tooltip="Centang untuk menghitung blended price.")
+def_avg_pr    = input.float(0, "Harga Rata-Rata Portfolio", group=grp_def_man)
+def_lot       = input.int(0, "Jumlah Lot Sekarang", group=grp_def_man)
+
+grp_def_sim   = "📁 PORTFOLIO: Execution Reality"
+def_b1        = input.bool(false, "Buy 1 (Executed?)", group=grp_def_sim)
+def_b2        = input.bool(false, "Buy 2 (Executed?)", group=grp_def_sim)
+def_b3        = input.bool(false, "Buy 3 (Executed?)", group=grp_def_sim)
+def_b4        = input.bool(false, "Buy 4 (Executed?)", group=grp_def_sim)
+
+// --- SLOT 1 ---
+grp_s1        = "📁 SLOT 1"
+s1_active     = input.bool(false, "Aktifkan Slot 1?", group=grp_s1)
+s1_sym        = input.symbol("IDX:BBCA", "Ticker Slot 1", group=grp_s1)
+s1_b1         = input.bool(false, "✅ Buy 1 Done?", group=grp_s1, inline="s1_exec1")
+s1_b2         = input.bool(false, "✅ Buy 2 Done?", group=grp_s1, inline="s1_exec1")
+s1_b3         = input.bool(false, "✅ Buy 3 Done?", group=grp_s1, inline="s1_exec2")
+s1_b4         = input.bool(false, "✅ Buy 4 Done?", group=grp_s1, inline="s1_exec2")
+s1_avg        = input.float(0, "Harga Rata-Rata Portfolio", group=grp_s1, tooltip="Isi jika sudah punya barang. Otomatis Mode Avg Up.")
+s1_lot        = input.int(0, "Jumlah Lot Sekarang", group=grp_s1)
+s1_strat      = input.string("Full Grid (1-2-3-4)", "Strategy Slot 1", options=["Full Grid (1-2-3-4)", "Extreme Dip (3-4)", "Sweet Spot (2-3)", "Mid-Reversal (2-4)", "Deep Value (1-3-4)", "The Gap (1-2-4)", "Sniper (1-3)", "Aggressive (1-2)"], group=grp_s1)
+s1_equity     = input.float(200000000, "Modal Slot 1 (Rp)", group=grp_s1)
+s1_fee        = input.float(0.15, "Fee Beli Sekuritas (%)", step=0.01, minval=0.0, group=grp_s1) 
+s1_man_pr     = input.float(0, "Manual Buy 1 Price (0=Auto)", group=grp_s1, tooltip="Isi harga jika ingin entry manual. 0 = Auto.")
+
+// --- SLOT 2 ---
+grp_s2        = "📁 SLOT 2"
+s2_active     = input.bool(false, "Aktifkan Slot 2?", group=grp_s2)
+s2_sym        = input.symbol("IDX:BMRI", "Ticker Slot 2", group=grp_s2)
+s2_b1         = input.bool(false, "✅ Buy 1 Done?", group=grp_s2, inline="s2_exec1")
+s2_b2         = input.bool(false, "✅ Buy 2 Done?", group=grp_s2, inline="s2_exec1")
+s2_b3         = input.bool(false, "✅ Buy 3 Done?", group=grp_s2, inline="s2_exec2")
+s2_b4         = input.bool(false, "✅ Buy 4 Done?", group=grp_s2, inline="s2_exec2")
+s2_avg        = input.float(0, "Harga Rata-Rata Portfolio", group=grp_s2)
+s2_lot        = input.int(0, "Jumlah Lot Sekarang", group=grp_s2)
+s2_strat      = input.string("Extreme Dip (3-4)", "Strategy Slot 2", options=["Full Grid (1-2-3-4)", "Extreme Dip (3-4)", "Sweet Spot (2-3)", "Mid-Reversal (2-4)", "Deep Value (1-3-4)", "The Gap (1-2-4)", "Sniper (1-3)", "Aggressive (1-2)"], group=grp_s2)
+s2_equity     = input.float(100000000, "Modal Slot 2 (Rp)", group=grp_s2)
+s2_fee        = input.float(0.15, "Fee Beli Sekuritas (%)", step=0.01, minval=0.0, group=grp_s2)
+s2_man_pr     = input.float(0, "Manual Buy 1 Price (0=Auto)", group=grp_s2)
+
+// --- SLOT 3 ---
+grp_s3        = "📁 SLOT 3"
+s3_active     = input.bool(false, "Aktifkan Slot 3?", group=grp_s3)
+s3_sym        = input.symbol("IDX:GOTO", "Ticker Slot 3", group=grp_s3)
+s3_b1         = input.bool(false, "✅ Buy 1 Done?", group=grp_s3, inline="s3_exec1")
+s3_b2         = input.bool(false, "✅ Buy 2 Done?", group=grp_s3, inline="s3_exec1")
+s3_b3         = input.bool(false, "✅ Buy 3 Done?", group=grp_s3, inline="s3_exec2")
+s3_b4         = input.bool(false, "✅ Buy 4 Done?", group=grp_s3, inline="s3_exec2")
+s3_avg        = input.float(0, "Harga Rata-Rata Portfolio", group=grp_s3)
+s3_lot        = input.int(0, "Jumlah Lot Sekarang", group=grp_s3)
+s3_strat      = input.string("Sniper (1-3)", "Strategy Slot 3", options=["Full Grid (1-2-3-4)", "Extreme Dip (3-4)", "Sweet Spot (2-3)", "Mid-Reversal (2-4)", "Deep Value (1-3-4)", "The Gap (1-2-4)", "Sniper (1-3)", "Aggressive (1-2)"], group=grp_s3)
+s3_equity     = input.float(50000000, "Modal Slot 3 (Rp)", group=grp_s3)
+s3_fee        = input.float(0.15, "Fee Beli Sekuritas (%)", step=0.01, minval=0.0, group=grp_s3)
+s3_man_pr     = input.float(0, "Manual Buy 1 Price (0=Auto)", group=grp_s3)
+
+// --- SLOT 4 ---
+grp_s4        = "📁 SLOT 4"
+s4_active     = input.bool(false, "Aktifkan Slot 4?", group=grp_s4)
+s4_sym        = input.symbol("IDX:ADRO", "Ticker Slot 4", group=grp_s4)
+s4_b1         = input.bool(false, "✅ Buy 1 Done?", group=grp_s4, inline="s4_exec1")
+s4_b2         = input.bool(false, "✅ Buy 2 Done?", group=grp_s4, inline="s4_exec1")
+s4_b3         = input.bool(false, "✅ Buy 3 Done?", group=grp_s4, inline="s4_exec2")
+s4_b4         = input.bool(false, "✅ Buy 4 Done?", group=grp_s4, inline="s4_exec2")
+s4_avg        = input.float(0, "Harga Rata-Rata Portfolio", group=grp_s4)
+s4_lot        = input.int(0, "Jumlah Lot Sekarang", group=grp_s4)
+s4_strat      = input.string("Full Grid (1-2-3-4)", "Strategy Slot 4", options=["Full Grid (1-2-3-4)", "Extreme Dip (3-4)", "Sweet Spot (2-3)", "Mid-Reversal (2-4)", "Deep Value (1-3-4)", "The Gap (1-2-4)", "Sniper (1-3)", "Aggressive (1-2)"], group=grp_s4)
+s4_equity     = input.float(100000000, "Modal Slot 4 (Rp)", group=grp_s4)
+s4_fee        = input.float(0.15, "Fee Beli Sekuritas (%)", step=0.01, minval=0.0, group=grp_s4)
+s4_man_pr     = input.float(0, "Manual Buy 1 Price (0=Auto)", group=grp_s4)
+
+// --- SLOT 5 ---
+grp_s5        = "📁 SLOT 5"
+s5_active     = input.bool(false, "Aktifkan Slot 5?", group=grp_s5)
+s5_sym        = input.symbol("IDX:UNTR", "Ticker Slot 5", group=grp_s5)
+s5_b1         = input.bool(false, "✅ Buy 1 Done?", group=grp_s5, inline="s5_exec1")
+s5_b2         = input.bool(false, "✅ Buy 2 Done?", group=grp_s5, inline="s5_exec1")
+s5_b3         = input.bool(false, "✅ Buy 3 Done?", group=grp_s5, inline="s5_exec2")
+s5_b4         = input.bool(false, "✅ Buy 4 Done?", group=grp_s5, inline="s5_exec2")
+s5_avg        = input.float(0, "Harga Rata-Rata Portfolio", group=grp_s5)
+s5_lot        = input.int(0, "Jumlah Lot Sekarang", group=grp_s5)
+s5_strat      = input.string("Full Grid (1-2-3-4)", "Strategy Slot 5", options=["Full Grid (1-2-3-4)", "Extreme Dip (3-4)", "Sweet Spot (2-3)", "Mid-Reversal (2-4)", "Deep Value (1-3-4)", "The Gap (1-2-4)", "Sniper (1-3)", "Aggressive (1-2)"], group=grp_s5)
+s5_equity     = input.float(100000000, "Modal Slot 5 (Rp)", group=grp_s5)
+s5_fee        = input.float(0.15, "Fee Beli Sekuritas (%)", step=0.01, minval=0.0, group=grp_s5)
+s5_man_pr     = input.float(0, "Manual Buy 1 Price (0=Auto)", group=grp_s5)
+
+// ------------------------------------------------------
+// GROUP 7: SCANNER LIST (BOTTOM)
+// ------------------------------------------------------
+grp_scan      = "📋 Scanner Config"
+scan_tf       = input.timeframe("D", "Timeframe Scanner", group=grp_scan)
+
+grp_list      = "📋 Watchlist Saham (20 Slot)"
+s01 = input.symbol("IDX:BBCA", "Saham 1", group=grp_list), s02 = input.symbol("IDX:BBRI", "Saham 2", group=grp_list)
+s03 = input.symbol("IDX:BMRI", "Saham 3", group=grp_list), s04 = input.symbol("IDX:BBNI", "Saham 4", group=grp_list)
+s05 = input.symbol("IDX:TLKM", "Saham 5", group=grp_list), s06 = input.symbol("IDX:ASII", "Saham 6", group=grp_list)
+s07 = input.symbol("IDX:GOTO", "Saham 7", group=grp_list), s08 = input.symbol("IDX:UNTR", "Saham 8", group=grp_list)
+s09 = input.symbol("IDX:ADRO", "Saham 9", group=grp_list), s10 = input.symbol("IDX:MDKA", "Saham 10", group=grp_list)
+s11 = input.symbol("IDX:AMMN", "Saham 11", group=grp_list), s12 = input.symbol("IDX:BRIS", "Saham 12", group=grp_list)
+s13 = input.symbol("IDX:PGAS", "Saham 13", group=grp_list), s14 = input.symbol("IDX:PTBA", "Saham 14", group=grp_list)
+s15 = input.symbol("IDX:INKP", "Saham 15", group=grp_list), s16 = input.symbol("IDX:TPIA", "Saham 16", group=grp_list)
+s17 = input.symbol("IDX:CPIN", "Saham 17", group=grp_list), s18 = input.symbol("IDX:KLBF", "Saham 18", group=grp_list)
+s19 = input.symbol("IDX:ICBP", "Saham 19", group=grp_list), s20 = input.symbol("IDX:INDF", "Saham 20", group=grp_list)
+
+// ==========================================
+// 1c. LOGIC VISIBILITY MAPPING
+// ==========================================
+
+bool show_scanner = (panel_mode == "Scanner" or panel_mode == "Both")
+bool show_left_hud = (panel_mode == "Insight HUD" or panel_mode == "Both")
+
+string scanner_pos = left_pos
+string scan_size = txt_size_left
+string left_hud_pos = left_pos
+string left_txt_size= txt_size_left
+
+// Colors (Base)
+c_cyan_fix = #00E5FF
+c_gold_fix = #FFD700
+c_orange = #FF6D00
+c_gray_fix = #787B86
+c_black_fix = #000000
+c_white_fix = #FFFFFF
+c_magenta = #D500F9
+c_blue_lbl = #2979FF
+c_beta = #2962FF
+c_lime = #76FF03
+
+c_ob_fill = color.new(#2979FF, 85)
+c_tp_zone = color.new(#00E676, 85)
+c_tp_zone2 = color.new(#00E676, 60)
+
+type stockData
+    string ticker
+    float price
+    float change_pct
+    string status
+    color status_col
+    string signal
+    color signal_col
+
+// ==========================================
+// 2. HELPER FUNCTIONS (INCLUDES RISEN HELPERS)
+// ==========================================
+
+f_clean_ticker(sym) =>
+    string s = str.replace(sym, "IDX:", "")
+    s := str.replace(s, "IDX_DLY:", "")
+    s
+
+// Helper for Shape Mapping
+f_get_shape(_s) =>
+    switch _s
+        "Triangle Up" => shape.triangleup
+        "Triangle Down" => shape.triangledown
+        "Circle" => shape.circle
+        "Square" => shape.square
+        "Diamond" => shape.diamond
+        "Label Up" => shape.labelup
+        "Label Down" => shape.labeldown
+        => shape.circle
+
+// --- IDX PRICE FRACTION LOGIC ---
+f_tick_idx(_p) =>
+    float _s = 1.0
+    if _p < 200
+        _s := 1.0
+    else if _p < 500
+        _s := 2.0
+    else if _p < 2000
+        _s := 5.0
+    else if _p < 5000
+        _s := 10.0
+    else
+        _s := 25.0
+    math.round(_p / _s) * _s
+
+// --- AUTO SECTOR MAPPER (IDX CORRECTED SYMBOLS) ---
+f_get_auto_sector() =>
+    string s = syminfo.sector
+    string id = "IDX:COMPOSITE" // Default Fallback
+    
+    // Mapping Logic (Text TV -> Symbol IDX Corrected)
+    // NOTE: Symbol names updated based on actual TradingView IDX tickers
+    if s == "Finance"
+        id := "IDX:IDXFINANCE"
+    else if s == "Energy" or s == "Energy Minerals"
+        id := "IDX:IDXENERGY"
+    else if s == "Technology" or s == "Electronic Technology" or s == "Technology Services"
+        id := "IDX:IDXTECHNO"
+    else if s == "Consumer Non-Durables" or s == "Process Industries"
+        id := "IDX:IDXNONCYC"
+    else if s == "Consumer Durables" or s == "Retail Trade" or s == "Distribution Services" or s == "Consumer Services"
+        id := "IDX:IDXCYCLIC"
+    else if s == "Health Services" or s == "Health Technology"
+        id := "IDX:IDXHEALTH"
+    else if s == "Non-Energy Minerals" or s == "Commercial Services"
+        id := "IDX:IDXBASIC"
+    else if s == "Industrial Services" or s == "Producer Manufacturing"
+        id := "IDX:IDXINDUST"
+    else if s == "Transportation"
+        id := "IDX:IDXTRANS"
+    else if s == "Utilities" or s == "Communications"
+        id := "IDX:IDXINFRA"
+    else if s == "Finance" // Double check
+        id := "IDX:IDXFINANCE"
+        
+    id
+
+pick_bench_close(primary, fallbacks_csv) =>
+    s1 = str.trim(primary)
+    b1 = request.security(s1, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
+    bench = b1
+    if na(bench)
+        string[] arr_fb = str.split(fallbacks_csv, ",")
+        for i = 0 to math.min(array.size(arr_fb), 2)
+            string s_fb = str.trim(array.get(arr_fb, i))
+            if str.length(s_fb) > 0 and na(bench)
+                float b_fb = request.security(s_fb, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
+                if not na(b_fb)
+                    bench := b_fb
+                    break
+    bench := nz(bench, nz(bench[1], 1))
+    bench
+
+// --- SMART RESISTANCE HELPERS ---
+f_count_touches(_lvl) =>
+    int _cnt = 0
+    if not na(_lvl)
+        float _tol = _lvl * 0.005
+        for j = 1 to 100
+            if high[j] >= (_lvl - _tol) and high[j] <= (_lvl + _tol)
+                _cnt += 1
+    _cnt
+
+f_get_prob(_cnt) =>
+    if _cnt <= 1
+        "Fresh (Hard)"
+    else if _cnt <= 3
+        "Weak (Hi-Prob)"
+    else
+        "Crit (Break?)"
+
+type resistInfo
+    float price
+    int tests
+    string prob_txt
+
+f_get_smart_resistance(_src_ph) =>
+    var float[] arr_ph = array.new_float(0)
+    if not na(_src_ph)
+        array.push(arr_ph, _src_ph)
+        if array.size(arr_ph) > 30
+            array.shift(arr_ph)
+    
+    float[] candidates = array.new_float(0)
+    if array.size(arr_ph) > 0
+        for i = 0 to array.size(arr_ph) - 1
+            float _val = array.get(arr_ph, i)
+            if _val > (close * 1.005)
+                array.push(candidates, _val)
+    
+    array.sort(candidates, order.ascending)
+    float _r1 = array.size(candidates) > 0 ? array.get(candidates, 0) : na
+    float _r2 = array.size(candidates) > 1 ? array.get(candidates, 1) : na
+    
+    int _t1 = f_count_touches(_r1)
+    int _t2 = f_count_touches(_r2)
+    
+    [resistInfo.new(_r1, _t1, f_get_prob(_t1)), resistInfo.new(_r2, _t2, f_get_prob(_t2))]
+
+// --- RISEN HELPERS ---
+f_clamp(float x, float lo, float hi) => math.max(lo, math.min(hi, x))
+f_safe_div(float num, float den, float fallback) => den != 0.0 ? (num / den) : fallback
+f_luma(color c) =>
+    float r = color.r(c), g = color.g(c), b = color.b(c)
+    (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
+
+f_mix(color c1, color c2, float t) =>
+    float tt = f_clamp(t, 0.0, 1.0)
+    int r = int(math.round(color.r(c1) + (color.r(c2) - color.r(c1)) * tt))
+    int g = int(math.round(color.g(c1) + (color.g(c2) - color.g(c1)) * tt))
+    int b = int(math.round(color.b(c1) + (color.b(c2) - color.b(c1)) * tt))
+    color.rgb(r, g, b)
+
+// ==========================================
+// 2b. QUANT CALCULATION ENGINE
+// ==========================================
+
+f_calc_quant_metrics(_src, _bench_src, _len, _rf_pct) =>
+    float _ret_log = math.log(_src / _src[1])
+    float _bench_ret_log = math.log(_bench_src / _bench_src[1])
+    
+    float _mean_daily_ret = ta.sma(_ret_log, _len)
+    float _ann_ret = _mean_daily_ret * 252
+    float _ann_ret_bench = ta.sma(_bench_ret_log, _len) * 252
+    
+    float _stdev_daily = ta.stdev(_ret_log, _len)
+    float _ann_vol = _stdev_daily * math.sqrt(252)
+    
+    float _neg_ret = math.min(_ret_log, 0)
+    float _down_var = ta.sma(math.pow(_neg_ret, 2), _len)
+    float _down_dev_daily = math.sqrt(_down_var)
+    float _ann_down_dev = _down_dev_daily * math.sqrt(252)
+    
+    float _rf = _rf_pct / 100.0
+    float _excess_ret = _ann_ret - _rf
+    
+    float _sharpe = _ann_vol != 0 ? (_excess_ret / _ann_vol) : 0.0
+    float _sortino = _ann_down_dev != 0 ? (_excess_ret / _ann_down_dev) : 0.0
+    float _alpha = (_ann_ret - _ann_ret_bench) * 100
+    
+    [_sharpe, _sortino, _alpha, _ann_vol * 100]
+
+float q_bench_close = request.security(bench_sym, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
+[q_sharpe, q_sortino, q_alpha, q_vol] = f_calc_quant_metrics(close, q_bench_close, risk_lookback, rf_rate_pct)
+
+// ==========================================
+// 3. GLOBAL CALCULATION (Structure)
+// ==========================================
+
+float _atr_global = ta.atr(14)
+float _hh_global = ta.highest(high, lookback_len)
+float _ll_global = ta.lowest(low, lookback_len)
+float _vol_sma_global = ta.sma(volume, 20)
+
+bench_close_raw = pick_bench_close(bench_primary, bench_fallbacks)
+bench_close = bench_close_raw
+
+rs = close / bench_close
+rsr = 100 * (rs / nz(ta.ema(rs, 20), 1))
+rsrS = ta.ema(rsr, 2)
+rsm = 100 * rsrS / nz(ta.ema(rsrS, 10), 1)
+
+quad_thr = 0.5
+q_lead = (rsrS > 100 + quad_thr) and (rsm > 100 + quad_thr)
+q_impr = (rsrS <= 100 - quad_thr) and (rsm > 100 + quad_thr)
+q_weak = (rsrS > 100 + quad_thr) and (rsm <= 100 - quad_thr)
+q_lagg = (rsrS <= 100 - quad_thr) and (rsm <= 100 - quad_thr)
+
+quad_txt = q_lead ? "LEADING" : (q_impr ? "IMPROVING" : (q_weak ? "WEAKENING" : "LAGGING"))
+quad_col = q_lead ? c_up_fix : (q_impr ? c_cyan_fix : (q_weak ? c_orange : c_dn_fix))
+bool _is_lagging = (quad_txt == "LAGGING")
+
+// --- CALCULATE SMART RESISTANCE GLOBALLY ---
+float _ph_global = ta.pivothigh(high, pivot_left, pivot_right)
+[info_tp1, info_tp2] = f_get_smart_resistance(_ph_global)
+
+float _tp1_raw = info_tp1.price
+int _tp1_tests = info_tp1.tests
+string _tp1_st = info_tp1.prob_txt
+
+float _tp2_raw = info_tp2.price
+int _tp2_tests = info_tp2.tests
+string _tp2_st = info_tp2.prob_txt
+
+// ==========================================
+// 3b. ALPHA ISOLATION ENGINE (AUTO SECTOR + SECTOR LAGGING FILTER)
+// ==========================================
+
+// 1. Tentukan Symbol Sektor (Auto vs Manual)
+string _auto_sec_sym = f_get_auto_sector()
+string _final_sec_sym = use_auto_sec ? _auto_sec_sym : man_sect_sym
+
+// 2. Ambil Data Close Sektor
+float sect_close = request.security(_final_sec_sym, timeframe.period, close, barmerge.gaps_off, barmerge.lookahead_off)
+
+// 3. Hitung RS: Sector vs Market (Apakah Sektornya sedang Hot?)
+float rs_sec_mkt   = sect_close / bench_close
+float rsr_sec_mkt  = 100 * (rs_sec_mkt / nz(ta.ema(rs_sec_mkt, 20), 1))
+bool  sec_is_hot   = rsr_sec_mkt > 100.2 // Buffer 0.2
+
+// 4. Hitung RS: Stock vs Sector (Apakah Saham ini Leader di Sektornya?)
+float rs_stk_sec   = close / sect_close
+float rsr_stk_sec  = 100 * (rs_stk_sec / nz(ta.ema(rs_stk_sec, 20), 1))
+bool  stk_is_leader = rsr_stk_sec > 100.2
+
+// [NEW LOGIC] 4b. Hitung RRG vs SECTOR (Untuk Filter Lagging)
+// Kita hitung ulang Momentum & Trend relatif terhadap SEKTOR, bukan IHSG.
+float rsrS_stk_sec = ta.ema(rsr_stk_sec, 2)
+float rsm_stk_sec  = 100 * rsrS_stk_sec / nz(ta.ema(rsrS_stk_sec, 10), 1)
+
+// Definisi Lagging Sektoral:
+// Trend vs Sektor Lemah (<100) DAN Momentum vs Sektor Lemah (<100)
+bool _is_lagging_sector = (rsrS_stk_sec <= 100 - quad_thr) and (rsm_stk_sec <= 100 - quad_thr)
+
+// [CRITICAL OVERRIDE]
+// Kita ganti variabel global '_is_lagging' (yang tadinya vs IHSG) menjadi vs SEKTOR.
+// Efeknya: Fitur "Filter Sinyal jika Lagging" sekarang otomatis memakai acuan Sektor.
+_is_lagging := _is_lagging_sector
+
+// 5. Tentukan Status Alpha (Output HUD)
+string alpha_txt = "ANALYZING..."
+color  alpha_col = c_gray_fix
+
+if sec_is_hot
+    if stk_is_leader
+        alpha_txt := "TRUE LEADER 👑" 
+        alpha_col := c_cyan_fix     
+    else
+        alpha_txt := "LAGGARD (Beta) ⚠️" 
+        alpha_col := c_orange        
+else
+    if stk_is_leader
+        alpha_txt := "DEFENSIVE 🛡️"   
+        alpha_col := c_lime          
+    else
+        alpha_txt := "WEAK / AVOID"   
+        alpha_col := c_dn_fix
+        
+// ==========================================
+// 4. ENGINE LOGIC
+// ==========================================
+
+f_calc_engine(_use_fvg, _agresif_mode, _col_snip, _col_beta, _col_gamm, _col_vshp, _col_earl) =>
+    float _atr_eng = ta.atr(14)
+    float _vol_sma_eng = ta.sma(volume, 20)
+    float _hh_eng = ta.highest(high, lookback_len)
+    float _ll_eng = ta.lowest(low, lookback_len)
+    
+    // --- [HARDCODED BACK TO DEFAULT] ---
+    float _ema21 = ta.ema(close, 21)
+    float _ema50 = ta.ema(close, 50)
+    float _ema200 = ta.ema(close, 200)
+    
+    // --- [HARDCODED BACK TO DEFAULT] Supertrend Logic ---
+    float _up = hl2 - (2.0 * ta.atr(10))
+    float _dn = hl2 + (2.0 * ta.atr(10))
+    var float _trend_up = 0.0
+    var float _trend_dn = 0.0
+    _trend_up := close[1] > _trend_up[1] ? math.max(_up, _trend_up[1]) : _up
+    _trend_dn := close[1] < _trend_dn[1] ? math.min(_dn, _trend_dn[1]) : _dn
+    var int _dir = 1
+    _dir := close > _trend_dn[1] ? 1 : close < _trend_up[1] ? -1 : nz(_dir[1], 1)
+    float _stop_line = _dir == 1 ? _trend_up : _trend_dn
+    
+    // --- [HARDCODED BACK TO DEFAULT] MACD & RSI ---
+    [macdLine, signalLine, _] = ta.macd(close, 12, 26, 9)
+    float _rsi = ta.rsi(close, 14)
+    
+    float _mid_range = (_hh_eng + _ll_eng) / 2
+    bool _is_below_equilibrium = close < _mid_range
+    bool _is_premium_zone = close >= _mid_range
+    
+    float _pl = ta.pivotlow(low, pivot_left, pivot_right)
+    var float _dem_top = na
+    var float _dem_bot = na
+    var float _last_swing_low = na
+    var float _last_swing_rsi = na
+    
+    if not na(_pl)
+        _dem_bot := _pl
+        _dem_top := high[pivot_right]
+        _last_swing_low := _pl
+        _last_swing_rsi := _rsi[pivot_right]
+    
+    float _toleransi = (high - low)
+    bool _is_in_struct = close <= (_dem_top + _toleransi) and close >= _dem_bot
+    if close < _dem_bot
+        _is_in_struct := false
+        
+    float _mid_fib = _ll_eng + ((_hh_eng - _ll_eng) * 0.382)
+    bool _is_in_discount = close < _mid_fib
+    
+    // --- [HARDCODED BACK TO DEFAULT] ADX/DMI ---
+    [di_plus, di_minus, adx_val] = ta.dmi(14, 14)
+    
+    bool _is_crashing = (adx_val > adx_limit) and (di_minus > di_plus)
+    bool _safe_from_crash = use_crash_filt ? not _is_crashing : true
+
+    // --- FVG DETECTION ---
+    bool _has_fvg = (low[0] > high[2])
+    bool _fvg_valid = _use_fvg ? _has_fvg : true
+
+    // CANDLE SHAPE
+    bool _prev_red = close[1] < open[1]
+    bool _curr_green = close > open
+    float _mid_prev = (open[1] + close[1]) / 2
+    bool _piercing = close > _mid_prev
+    float _body_size = math.abs(close - open)
+    float _range_size = high - low
+    float _upper_wick = high - close
+    float _lower_wick = open - low
+    bool _decent_body = _body_size > (_range_size * 0.4)
+    bool _small_upper = _upper_wick < _body_size
+    bool _candle_ok = _curr_green and _decent_body and _small_upper
+
+    // SIGNALS
+    bool _trend_flip = (_dir == 1) and (_dir[1] == -1)
+    bool _trend_cont = (_dir == 1)
+    bool _rsi_ok = _rsi > 50
+    bool _rsi_cross = ta.crossover(_rsi, 50)
+    bool _f_vol = volume > (_vol_sma_eng * 1.2)
+    
+    // SNIPER LOGIC
+    bool _valid_loc_sniper = (_is_in_struct or _is_in_discount) and _is_below_equilibrium
+    bool _trigger_sniper = (_trend_flip and _rsi_ok) or (_trend_cont and _rsi_cross)
+    bool _sig_combo = _trigger_sniper and _valid_loc_sniper and _f_vol and _safe_from_crash and _candle_ok and _fvg_valid
+    
+    // BETA LOGIC
+    bool _trigger_beta = _trend_flip and _rsi_ok
+    bool _sig_beta = _trigger_beta and _is_premium_zone and _f_vol and _safe_from_crash and _candle_ok
+
+    // ==========================================
+    // --- REVISED V-SHAPE LOGIC (BMRI PATCH) ---
+    // ==========================================
+    bool _solid_body_v = _body_size > (_range_size * 0.4)
+    bool _small_wick_v = _upper_wick < (_body_size * 0.8)
+    bool _piercing_v = close > ((open[1] + close[1]) / 2)
+    
+    // Volume Filter
+    bool _vol_spike_v = volume > (_vol_sma_eng * v_vol_factor)
+
+    // 1. Classic Low
+    bool _is_classic_low = low[1] <= ta.lowest(low, 10)[1]
+    // 2. Delayed Low
+    bool _is_delayed_low = (low[2] <= ta.lowest(low, 10)[2]) and (close[1] < open[1])
+    bool _valid_bottom_loc = _is_classic_low or _is_delayed_low
+    
+    float _nearest_res = math.min(_ema21, _stop_line)
+    float _gap_to_res = (_nearest_res - close) / close * 100
+    bool _gap_ok = _dir == -1 ? (_gap_to_res > 2.0) : true
+    
+    bool _wick_safe = high < (_ema21 * 1.005)
+    bool _cond_std = _gap_ok and _wick_safe
+    
+    bool _is_engulfing = close >= open[1]
+    bool _cond_power = _valid_bottom_loc and _prev_red and _is_engulfing and _vol_spike_v
+    
+    bool _final_vshape_logic = _cond_std or _cond_power
+    bool _sig_vshape = _prev_red and _curr_green and _piercing_v and _vol_spike_v and _final_vshape_logic and _safe_from_crash
+
+    // ==========================================
+    // --- GAMMA UNCHAINED LOGIC ---
+    // ==========================================
+    float _g_rsi_cap = _agresif_mode ? 99 : 90
+    float _g_wick_tol = _agresif_mode ? 1.0 : 0.4
+    
+    bool _cond_safe = (close > _ema200) and (close > _ema50)
+    bool _strong_candle = (_body_size > (_range_size * 0.5)) and (_upper_wick < (_body_size * _g_wick_tol))
+    bool _rsi_valid = _rsi > 50 and _rsi < _g_rsi_cap
+    
+    bool _base_alpha = _cond_safe and _f_vol and (_dir == 1) and _strong_candle
+    bool _final_alpha = _base_alpha and _rsi_valid
+    bool _sig_gamma = _final_alpha and not _sig_vshape and not _sig_combo and not _sig_beta
+    
+    // Early Sweep
+    bool _sweep_liq = not na(_last_swing_low) and (low < _last_swing_low)
+    bool _rsi_div = not na(_last_swing_rsi) and (_rsi > _last_swing_rsi)
+    bool _is_power_candle = (_body_size > (_range_size * 0.3)) and (_upper_wick < _body_size)
+    bool _is_hammer = (_lower_wick > (_body_size * 2))
+    bool _valid_candle = (close > open) and (_is_power_candle or _is_hammer)
+    bool _early_trig = _sweep_liq and _rsi_div and _valid_candle and _valid_loc_sniper and _safe_from_crash
+    bool _sig_early = _early_trig and not _sig_combo and not _sig_vshape
+
+    string _stat_txt = _dir == 1 ? "UPTREND" : "DOWNTREND"
+    color _stat_col = _dir == 1 ? c_up_fix : c_dn_fix
+    
+    string _sig_txt = "WAIT"
+    color _sig_col = c_gray_fix
+    
+    if _sig_combo
+        _sig_txt := "SNIPER COMBO"
+        _sig_col := _col_snip
+    else if _sig_beta
+        _sig_txt := "BETA BREAKOUT"
+        _sig_col := _col_beta
+    else if _sig_early
+        _sig_txt := "EARLY SWEEP"
+        _sig_col := _col_earl
+    else if _sig_vshape
+        _sig_txt := "V-SHAPE"
+        _sig_col := _col_vshp
+    else if _sig_gamma
+        _sig_txt := "GAMMA PUMP"
+        _sig_col := _col_gamm
+    else if _dir == 1
+        _sig_txt := "HOLD"
+        _sig_col := color.new(c_up_fix, 60)
+    else
+        _sig_txt := "AVOID"
+        _sig_col := color.new(c_dn_fix, 60)
+        
+    float _chg = (close - close[1]) / close[1] * 100
+
+    [_ema21, _ema50, _ema200, _stop_line, _dir, _sig_combo, _sig_gamma, _sig_vshape, _sig_early, _stat_txt, _stat_col, _sig_txt, _sig_col, close, _chg, _rsi, _dem_bot, _dem_top, adx_val, _sig_beta]
+
+// --- CALL ENGINE ---
+[c_ema21, c_ema50, c_ema200, c_stop, c_dir, c_sig_combo, c_sig_gamma, c_sig_vshape, c_sig_early, c_stat_txt, c_stat_col, c_sig_txt, c_sig_col, c_close, c_chg, c_rsi, c_dem_bot, c_dem_top, c_adx, c_sig_beta] = f_calc_engine(use_fvg_filt, gamma_agresif, c_sniper_in, c_beta_in, c_gamma_in, c_vshape_in, c_early_in)
+
+// ==========================================
+// 5b. RISEN LOGIC ENGINE
+// ==========================================
+
+int r_boxLen = 15
+float r_wAtr = 0.40, float r_wRange = 0.35, float r_wVol = 0.25
+float r_rangeATRMult = 3.0, r_volQuietMult = 1.10, r_volLoudMult = 2.00, r_volCoolingCap = 1.20
+float r_volFast = ta.sma(volume, 5), r_volSlow = ta.sma(volume, 20)
+
+// Rolling 15-bar
+float r_rollHigh = ta.highest(high, r_boxLen)[1]
+float r_rollLow  = ta.lowest(low,  r_boxLen)[1]
+float r_rollH    = r_rollHigh - r_rollLow
+bool  r_okRoll   = not na(r_rollHigh) and not na(r_rollLow) and r_rollH > 0
+
+// Anchored Snapshot
+var int r_anchorStart = na
+var float r_aHigh = na, var float r_aLow = na
+var int r_aLeftTime = na, var int r_aRightTime = na
+var int tL0 = na, var int tR0 = na, var int tL1 = na, var int tR1 = na, var int tL2 = na, var int tR2 = na
+
+if r_okRoll and na(r_anchorStart)
+    r_anchorStart := bar_index
+    r_aHigh := r_rollHigh
+    r_aLow  := r_rollLow
+    r_aLeftTime := time[r_boxLen]
+    r_aRightTime := time[1]
+    tL0 := time
+
+if not na(r_anchorStart)
+    if bar_index == r_anchorStart
+        tL0 := time
+    if bar_index == r_anchorStart + r_boxLen - 1
+        tR0 := time
+    if bar_index == r_anchorStart + r_boxLen
+        tL1 := time
+    if bar_index == r_anchorStart + r_boxLen * 2 - 1
+        tR1 := time
+    if bar_index == r_anchorStart + r_boxLen * 2
+        tL2 := time
+    if bar_index == r_anchorStart + r_boxLen * 3 - 1
+        tR2 := time
+
+float r_refHigh_pre = r_aHigh
+float r_refLow_pre  = r_aLow
+bool  r_ok_pre      = not na(r_refHigh_pre) and not na(r_refLow_pre)
+
+float r_hiCloseLB = ta.highest(close, r_lookback_y)
+float r_loCloseLB = ta.lowest(close,  r_lookback_y)
+float r_volSMA15  = ta.sma(volume, 15)
+
+// Shock Detection
+bool r_recentUpBreak_pre = r_ok_pre and (r_hiCloseLB > r_refHigh_pre)
+bool r_recentDnBreak_pre = r_ok_pre and (r_loCloseLB < r_refLow_pre)
+bool r_volSurge_pre      = r_ok_pre and (volume > r_volSMA15 * r_vol_mult)
+
+float r_upThresh_pre = r_ok_pre ? r_refHigh_pre * (1.0 + r_thresh_pct / 100.0) : na
+float r_dnThresh_pre = r_ok_pre ? r_refLow_pre  * (1.0 - r_thresh_pct / 100.0) : na
+
+bool r_isExplosiveBull_pre = r_ok_pre and (close > r_upThresh_pre) and r_volSurge_pre and r_recentUpBreak_pre
+bool r_isCrashSelloff_pre  = r_ok_pre and (close < r_dnThresh_pre) and r_volSurge_pre and r_recentDnBreak_pre
+
+var int r_shockBar = na
+if r_isExplosiveBull_pre or r_isCrashSelloff_pre
+    r_shockBar := bar_index
+bool r_postShock = not na(r_shockBar) and (bar_index - r_shockBar <= r_postShockBars)
+
+// Scoring
+bool r_insideRolling = r_okRoll and close <= r_rollHigh and close >= r_rollLow
+float r_atrBase = ta.sma(ta.atr(r_atrLen), r_atrBaseLen)
+float r_atrRatio = f_safe_div(ta.atr(r_atrLen), r_atrBase, na)
+float r_atrScore = not na(r_atrRatio) and (r_atrCompMult < 1.0) ? f_clamp(((1.0 - r_atrRatio) / (1.0 - r_atrCompMult)) * 100.0, 0.0, 100.0) : 0.0
+
+float r_rangeDen = ta.atr(r_atrLen) * r_rangeATRMult
+float r_rangeRatio = f_safe_div(r_rollH, r_rangeDen, na)
+float r_rangeScore = not na(r_rangeRatio) ? f_clamp(((1.50 - r_rangeRatio) / 0.5) * 100.0, 0.0, 100.0) : 0.0
+
+float r_volRatio = f_safe_div(volume, r_volSMA15, na)
+float r_volQuietScore = not na(r_volRatio) ? f_clamp(((r_volLoudMult - r_volRatio) / (r_volLoudMult - r_volQuietMult)) * 100.0, 0.0, 100.0) : 0.0
+float r_volSlopeRatio = f_safe_div(r_volFast, r_volSlow, na)
+float r_volCoolScore = not na(r_volSlopeRatio) ? f_clamp(((r_volCoolingCap - r_volSlopeRatio) / (r_volCoolingCap - 1.0)) * 100.0, 0.0, 100.0) : 0.0
+float r_volScore = (0.70 * r_volQuietScore + 0.30 * r_volCoolScore)
+
+float r_wSum  = math.max(0.0001, r_wAtr + r_wRange + r_wVol)
+float r_score = r_insideRolling ? ((r_wAtr * r_atrScore + r_wRange * r_rangeScore + r_wVol * r_volScore) / r_wSum) : 0.0
+
+int  r_scoreThr = r_postShock ? r_scoreThrPostShock : r_scoreThrNormal
+bool r_consCond = r_insideRolling and (not r_useScored or r_score >= r_scoreThr)
+
+var int r_consCount = 0
+r_consCount := r_consCond ? (nz(r_consCount[1]) + 1) : 0
+int r_needBars = r_postShock ? r_consBarsFast : r_consBarsNormal
+bool r_consolidationFormed = r_okRoll and (r_consCount >= r_needBars)
+bool r_reanchorSignal = r_consolidationFormed and not r_consolidationFormed[1]
+
+if r_reanchorSignal
+    r_anchorStart := bar_index
+    r_aHigh := r_rollHigh
+    r_aLow  := r_rollLow
+    r_aLeftTime := time[r_boxLen]
+    r_aRightTime := time[1]
+    tL0 := time
+    tL1 := na, tL2 := na, tR0 := na, tR1 := na, tR2 := na
+    r_consCount := 0
+    r_shockBar := na
+
+float r_refHigh = r_aHigh
+float r_refLow  = r_aLow
+float r_refH    = r_refHigh - r_refLow
+bool  r_ok      = not na(r_refHigh) and not na(r_refLow) and r_refH > 0
+
+// Regime Classification
+bool r_recentUpBreak = r_ok and (r_hiCloseLB > r_refHigh)
+bool r_recentDnBreak = r_ok and (r_loCloseLB < r_refLow)
+bool r_volSurge      = r_ok and (volume > r_volSMA15 * r_vol_mult)
+
+float r_upThresh = r_ok ? r_refHigh * (1.0 + r_thresh_pct / 100.0) : na
+float r_dnThresh = r_ok ? r_refLow  * (1.0 - r_thresh_pct / 100.0) : na
+
+bool r_isExplosiveBull = r_ok and (close > r_upThresh) and r_volSurge and r_recentUpBreak
+bool r_isCrashSelloff  = r_ok and (close < r_dnThresh) and r_volSurge and r_recentDnBreak
+bool r_isNormalUp      = r_ok and (close > r_refHigh) and not r_isExplosiveBull
+bool r_isNormalDown    = r_ok and (close < r_refLow)  and not r_isCrashSelloff
+bool r_isSideways      = r_ok and close >= r_refLow and close <= r_refHigh and not (r_isExplosiveBull or r_isCrashSelloff)
+
+string r_regime = r_isExplosiveBull ? "EXPLOSIVE BULL" : r_isCrashSelloff ? "CRASH / SELL-OFF" : r_isNormalUp ? "NORMAL UPTREND" : r_isNormalDown ? "NORMAL DOWNTREND" : r_isSideways ? "SIDEWAYS" : "N/A"
+color r_regimeCol = r_isExplosiveBull ? color.lime : r_isNormalUp ? color.green : r_isCrashSelloff ? color.red : r_isNormalDown ? color.maroon : r_isSideways ? color.yellow : color.gray
+
+// --- VISUAL RISEN LOGIC (Candle Painting) ---
+// Simplified from source for efficiency inside MaX
+color r_paintCol = na
+if show_risen and r_tintRegime and r_ok
+    if r_isSideways
+        r_paintCol := color.new(color.yellow, 20)
+    else
+        r_paintCol := color.new(r_regimeCol, 20)
+
+// ==========================================
+// 5c. [NEW INTEGRATION] SMART GAMMA LOGIC
+// ==========================================
+// Integrasi: Gamma Signal (Momentum) + RISEN (Structure)
+
+// 1. Definisikan Mode Smart Gamma
+// Mode A: Breakout (Gamma muncul saat Explosive Bull atau Breakout Valid)
+bool is_gamma_breakout = c_sig_gamma and (r_isExplosiveBull or (r_recentUpBreak and r_volSurge))
+
+// Mode B: Squeeze (Gamma muncul saat Sideways tapi Pressure/Score tinggi > 70)
+bool is_gamma_squeeze  = c_sig_gamma and r_insideRolling and (r_score >= 70)
+
+// 2. Trigger Final
+bool smart_gamma_trigger = is_gamma_breakout or is_gamma_squeeze
+
+// 3. Override Sinyal Asli
+// Hanya lakukan override jika fitur RISEN aktif (show_risen = true)
+if show_risen
+    if smart_gamma_trigger
+        // Jika valid Smart Gamma, kita "Upgrade" statusnya
+        c_sig_gamma := true
+        c_sig_txt   := "SMART GAMMA"
+        // Warna tetap Gold (c_gamma_in) atau bisa diubah jika mau
+    else
+        // Jika Gamma asli aktif tapi TIDAK lolos filter Smart Gamma (misal muncul di choppy market tanpa power)
+        if c_sig_gamma
+            c_sig_gamma := false // Matikan sinyal
+            // Kembalikan status ke WAIT jika tidak ada sinyal lain yang dominan
+            if c_sig_txt == "GAMMA PUMP"
+                c_sig_txt := "WAIT"
+                c_sig_col := c_gray_fix
+
+// ==========================================
+// [NEW INTEGRATION] ADVANCED RISEN FILTERING (V7.30+)
+// ==========================================
+// Menyatukan Logic MaX (Eksekusi) dengan RISEN (Konteks)
+
+if show_risen
+    // ------------------------------------------
+    // A. SMART SNIPER (PROTECTED DEMAND)
+    // ------------------------------------------
+    // 1. Safe Floor: Demand tidak boleh jebol parah dari lantai Box RISEN (Toleransi 2%)
+    bool _is_struct_safe = close >= (r_refLow * 0.98)
+    // 2. Safe Regime: Jangan tangkap pisau jatuh saat Crash
+    bool _is_regime_safe = (r_regime != "CRASH / SELL-OFF") and (r_regime != "NORMAL DOWNTREND")
+
+    if c_sig_combo
+        if not (_is_struct_safe and _is_regime_safe)
+            c_sig_combo := false // Matikan sinyal
+            if c_sig_txt == "SNIPER COMBO"
+                c_sig_txt := "UNSAFE DIP ⚠️" 
+                c_sig_col := c_dn_fix        
+        else
+            c_sig_txt := "SMART SNIPER" // Upgrade Status
+
+
+// ==========================================
+// 5d. FILTER LOGIC (TREND FOLLOWER ONLY)
+// ==========================================
+// Update: Hanya mematikan Beta & Gamma saat Lagging.
+// Sniper, V-Shape, Early Sweep (Reversal) tetap HIDUP (Diizinkan).
+
+if use_quad_filter and _is_lagging
+    // 1. Matikan BETA (Breakout)
+    if c_sig_beta
+        c_sig_beta := false
+        // Update Text Status hanya jika Beta adalah signal utama saat ini
+        if c_sig_txt == "BETA BREAKOUT"
+            c_sig_txt := "FILTERED (LAG)"
+            c_sig_col := c_gray_fix
+
+    // 2. Matikan GAMMA (Momentum & Smart Gamma)
+    // Kita matikan baik Gamma Original maupun Smart Gamma dari RISEN
+    if c_sig_gamma
+        c_sig_gamma := false
+        // Cek variasi text Gamma agar labelnya berubah benar
+        if c_sig_txt == "GAMMA PUMP" or c_sig_txt == "SMART GAMMA" or c_sig_txt == "G ACC"
+            c_sig_txt := "FILTERED (LAG)"
+            c_sig_col := c_gray_fix
+
+
+// ==========================================
+// [NEW LOGIC] G ACC (GAMMA ACCELERATION)
+// ==========================================
+// Fitur: Mendeteksi Gamma susulan yang harganya > Gamma pertama
+
+var float g_ref_price = na // Variable memori untuk menyimpan harga Gamma terakhir
+
+// 1. Reset Memori jika Trend Berubah (Penting!)
+// Jika trend flip jadi Bearish (-1), memori Gamma dihapus agar tidak rancu dengan siklus baru.
+if c_dir == -1
+    g_ref_price := na
+
+// 2. Eksekusi Logika G ACC
+if c_sig_gamma // Jika ada sinyal Gamma (Baik Original maupun Smart Gamma)
+    // Cek apakah ini Gamma susulan & harganya lebih tinggi dari Gamma sebelumnya?
+    if not na(g_ref_price) and close > g_ref_price
+        c_sig_txt := "G ACC"  // RENAME Signal Text
+        // Opsional: Anda bisa override warna jika mau, contoh:
+        // c_sig_col := color.new(#00E5FF, 0) 
+    
+    // Update referensi harga ke Gamma yang baru terjadi ini
+    g_ref_price := close
+
+// ==========================================
+// [NEW MODULE] VOLUME X-RAY (DEEP SCAN ENGINE)
+// ==========================================
+
+// A. Fungsi Helper untuk dijalankan di Lower Timeframe
+// Logika: Jika candle 15 menit hijau, anggap Buy Vol. Jika merah, Sell Vol.
+f_ltf_vol_breakdown() =>
+    float _v = volume
+    bool _green = close >= open
+    [_green ? _v : 0.0, not _green ? _v : 0.0]
+
+// B. Request Data Intraday (The Heavy Lifting)
+var float x_buy_total = 0.0
+var float x_sell_total = 0.0
+var float x_vol_total = 0.0
+
+// Kita hanya jalankan request ini JIKA fitur dinyalakan agar hemat resource
+float[] arr_buy_vol = array.new_float(0)
+float[] arr_sell_vol = array.new_float(0)
+
+if use_xray
+    // Request data detail dari timeframe kecil (misal: 15 menit)
+    [a_b, a_s] = request.security_lower_tf(syminfo.tickerid, xray_tf, f_ltf_vol_breakdown())
+    arr_buy_vol := a_b
+    arr_sell_vol := a_s
+
+    // C. Summation (Menjumlahkan isi perut candle)
+    x_buy_total  := array.sum(arr_buy_vol)
+    x_sell_total := array.sum(arr_sell_vol)
+    x_vol_total  := x_buy_total + x_sell_total
+
+// D. Penentuan Warna (Decision Matrix)
+color x_bar_col = na
+float x_vol_ma = ta.sma(volume, 20)
+bool x_is_heavy = volume > x_vol_ma // Volume di atas rata-rata
+
+if use_xray and x_vol_total > 0
+    // Hitung Dominasi
+    float _buy_ratio = x_buy_total / x_vol_total
+    
+    if x_is_heavy
+        if _buy_ratio > 0.65
+            // Dominan BUYING (Akumulasi Kuat) -> CYAN
+            x_bar_col := #00E5FF
+        else if _buy_ratio < 0.35
+            // Dominan SELLING (Distribusi Kuat) -> MAGENTA
+            x_bar_col := #D500F9
+        else
+            // Volume Besar tapi Seimbang (Tarung/Churning) -> ORANYE
+            x_bar_col := #FF6D00
+    else
+        // Volume Kecil/Sepi (Retail) -> ABU-ABU
+        x_bar_col := color.gray
+
+
+// ==========================================
+// 6. VISUALISASI CHART (UPDATED)
+// ==========================================
+
+// [UPDATED PLOT WITH CUSTOM COLORS]
+plot(show_emas ? c_ema21 : na, "EMA 1", color=color.new(c_ema1_in, 20), linewidth=1)
+plot(show_emas ? c_ema50 : na, "EMA 2", color=color.new(c_ema2_in, 20), linewidth=1)
+plot(show_emas ? c_ema200 : na, "EMA 3", color=color.new(c_ema3_in, 10), linewidth=2)
+
+// [UPDATED] Candle Coloring Hierarchy (Master Logic):
+// Priority 1: RISEN Regime (Jika Tint Regime ON) -> X-Ray kalah.
+// Priority 2: Volume X-Ray (Jika X-Ray ON & Data Tersedia) -> Trend Standard kalah.
+// Priority 3: MaX Trend (Default)
+
+color final_bar_col = na
+
+// 1. Cek RISEN dulu (Prioritas Utama)
+if show_risen and r_tintRegime and not na(r_paintCol)
+    // Jika user minta warna Regime, berikan warna Regime (Explosive/Crash/Sideways)
+    final_bar_col := r_paintCol
+
+// 2. Jika RISEN tidak minta warna, Cek X-Ray
+else if use_xray and not na(x_bar_col)
+    // Jika X-Ray aktif, pakai hasil Deep Scan (Cyan/Magenta/Oranye)
+    final_bar_col := x_bar_col
+
+// 3. Fallback ke Trend Standard MaX
+else if show_candles
+    // Hijau jika Uptrend, Merah jika Downtrend
+    final_bar_col := (c_dir == 1 ? c_up_fix : c_dn_fix)
+
+// Plot Candle Final
+// Menggunakan plotcandle tunggal agar tidak terjadi tumpang tindih warna
+plotcandle(open, high, low, close, color = final_bar_col, wickcolor = final_bar_col, bordercolor = final_bar_col, title="MaX Candles")
+
+// Hapus barcolor lain jika ada, agar bersih
+barcolor(na)
+
+// [UPDATED SUPERTREND PLOT]
+plot(c_stop, "Trend Line", color = c_dir == 1 ? color.new(c_up_fix, 50) : color.new(c_dn_fix, 50), linewidth=2)
+
+// ==========================================
+// 6c. VISUAL RISEN DRAWINGS (BOXES & LINES)
+// ==========================================
+var box r_refBox = na
+var box[] r_mapBoxes = array.new_box()
+var line r_upL = na, var line r_upU = na, var linefill r_upF = na
+var line r_dnU = na, var line r_dnL = na, var linefill r_dnF = na
+
+f_add_box_time(int leftT, int rightT, float top, float bottom, color brd, color bg) =>
+    if not na(leftT) and not na(rightT) and rightT >= leftT
+        box b = box.new(left=leftT, top=top, right=rightT, bottom=bottom, xloc=xloc.bar_time, border_color=brd, bgcolor=bg)
+        array.push(r_mapBoxes, b)
+
+if show_risen and barstate.islast
+    if not na(r_refBox)
+        box.delete(r_refBox)
+    while array.size(r_mapBoxes) > 0
+        box b = array.pop(r_mapBoxes)
+        box.delete(b)
+    
+    line.delete(r_upL), line.delete(r_upU), linefill.delete(r_upF)
+    line.delete(r_dnU), line.delete(r_dnL), linefill.delete(r_dnF)
+    
+    if r_ok and not na(r_anchorStart) and not na(r_aLeftTime) and not na(r_aRightTime)
+        r_refBox := box.new(left=r_aLeftTime, top=r_refHigh, right=r_aRightTime, bottom=r_refLow, xloc=xloc.bar_time, border_color=color.yellow, bgcolor=color.new(color.yellow, 90))
+        
+        if r_showMap
+            int right0 = not na(tR0) ? tR0 : time
+            f_add_box_time(tL0, right0, r_refHigh, r_refLow, color.yellow, color.new(color.yellow, r_mapOp))
+            f_add_box_time(tL0, right0, r_refHigh + r_refH, r_refHigh, color.green, color.new(color.green, r_mapOp))
+            f_add_box_time(tL0, right0, r_refHigh + r_refH * 2, r_refHigh + r_refH, color.lime, color.new(color.lime, r_mapOp))
+            f_add_box_time(tL0, right0, r_refLow, r_refLow - r_refH, color.maroon, color.new(color.maroon, r_mapOp))
+            f_add_box_time(tL0, right0, r_refLow - r_refH, r_refLow - r_refH*2, color.red, color.new(color.red, r_mapOp))
+            
+            if not na(tL1)
+                int right1 = not na(tR1) ? tR1 : time
+                f_add_box_time(tL1, right1, r_refHigh, r_refLow, color.yellow, color.new(color.yellow, r_mapOp))
+                
+                if r_showDiag
+                    float slope = r_refH / r_boxLen
+                    int x1T = tL1, int x2T = right1
+                    int off1 = r_boxLen
+                    int off2 = math.min(bar_index - r_anchorStart, r_boxLen * 2 - 1)
+                    float y1 = r_refHigh + slope * off1, float y2 = r_refHigh + slope * off2
+                    r_upL := line.new(x1T, y1, x2T, y2, xloc=xloc.bar_time, color=color.green, width=1)
+                    r_upU := line.new(x1T, y1+r_refH, x2T, y2+r_refH, xloc=xloc.bar_time, color=color.green, width=1)
+                    r_upF := linefill.new(r_upL, r_upU, color.new(color.green, r_mapOp))
+                    
+                    float d1 = r_refLow - slope * off1, float d2 = r_refLow - slope * off2
+                    r_dnU := line.new(x1T, d1, x2T, d2, xloc=xloc.bar_time, color=color.maroon, width=1)
+                    r_dnL := line.new(x1T, d1-r_refH, x2T, d2-r_refH, xloc=xloc.bar_time, color=color.maroon, width=1)
+                    r_dnF := linefill.new(r_dnU, r_dnL, color.new(color.maroon, r_mapOp))
+
+            if not na(tL2)
+                int right2 = not na(tR2) ? tR2 : time
+                f_add_box_time(tL2, right2, r_refHigh, r_refLow, color.yellow, color.new(color.yellow, r_mapOp))
+
+
+// ==========================================
+// [NEW] STATE SWITCHER LOGIC (V7.30)
+// ==========================================
+// Menentukan variabel aktif berdasarkan Slot
+
+string clean_tic = f_clean_ticker(syminfo.ticker)
+bool is_s1 = s1_active and (str.contains(s1_sym, clean_tic) or str.contains(syminfo.tickerid, clean_tic))
+bool is_s2 = s2_active and (str.contains(s2_sym, clean_tic) or str.contains(syminfo.tickerid, clean_tic))
+bool is_s3 = s3_active and (str.contains(s3_sym, clean_tic) or str.contains(syminfo.tickerid, clean_tic))
+
+/// DEFAULT VALUES (Logic Fallback to Manual Checks)
+string use_strat = def_strat
+float use_equity = def_equity
+// Logic Manual Override
+float use_man_pr = def_use_man and def_man_pr > 0 ? def_man_pr : 0.0
+bool use_manual = def_use_man
+// Logic Holding / Avg Up Override
+float u_avg_hold = def_use_avg ? def_avg_pr : 0.0
+int u_lot_hold = def_use_avg ? def_lot : 0
+// Logic Fee Broker (NEW)
+float use_fee = def_fee_pct // Default Global
+
+// Execution Status defaults
+bool u_b1 = def_b1, bool u_b2 = def_b2, bool u_b3 = def_b3, bool u_b4 = def_b4
+
+// SWITCHING LOGIC (Smart Slot Override)
+if is_s1
+    use_strat := s1_strat
+    use_equity := s1_equity
+    use_man_pr := s1_man_pr
+    use_manual := s1_man_pr > 0
+    u_b1 := s1_b1, u_b2 := s1_b2, u_b3 := s1_b3, u_b4 := s1_b4
+    u_avg_hold := s1_avg, u_lot_hold := s1_lot
+    use_fee := s1_fee // [UPDATE FEE]
+else if is_s2
+    use_strat := s2_strat
+    use_equity := s2_equity
+    use_man_pr := s2_man_pr
+    use_manual := s2_man_pr > 0
+    u_b1 := s2_b1, u_b2 := s2_b2, u_b3 := s2_b3, u_b4 := s2_b4
+    u_avg_hold := s2_avg, u_lot_hold := s2_lot
+    use_fee := s2_fee // [UPDATE FEE]
+else if is_s3
+    use_strat := s3_strat
+    use_equity := s3_equity
+    use_man_pr := s3_man_pr
+    use_manual := s3_man_pr > 0
+    u_b1 := s3_b1, u_b2 := s3_b2, u_b3 := s3_b3, u_b4 := s3_b4
+    u_avg_hold := s3_avg, u_lot_hold := s3_lot
+    use_fee := s3_fee // [UPDATE FEE]
+else if s4_active and (str.contains(s4_sym, clean_tic) or str.contains(syminfo.tickerid, clean_tic)) // Manual Check S4
+    use_strat := s4_strat
+    use_equity := s4_equity
+    use_man_pr := s4_man_pr
+    use_manual := s4_man_pr > 0
+    u_b1 := s4_b1, u_b2 := s4_b2, u_b3 := s4_b3, u_b4 := s4_b4
+    u_avg_hold := s4_avg, u_lot_hold := s4_lot
+    use_fee := s4_fee // [UPDATE FEE]
+else if s5_active and (str.contains(s5_sym, clean_tic) or str.contains(syminfo.tickerid, clean_tic)) // Manual Check S5
+    use_strat := s5_strat
+    use_equity := s5_equity
+    use_man_pr := s5_man_pr
+    use_manual := s5_man_pr > 0
+    u_b1 := s5_b1, u_b2 := s5_b2, u_b3 := s5_b3, u_b4 := s5_b4
+    u_avg_hold := s5_avg, u_lot_hold := s5_lot
+    use_fee := s5_fee // [UPDATE FEE]
+
+// --- MEMORY VARIABLES (GLOBAL SCOPE) ---
+var float mem_e1 = na
+var float mem_e2 = na
+var float mem_e3 = na
+var float mem_e4 = na
+var float mem_sl = na
+var float mem_tp1 = na
+var float mem_tp2 = na
+var float mem_trail_sl = na // [NEW] Memory Trailing
+var int mem_tp1_t = 0
+var int mem_tp2_t = 0
+var string mem_tp1_s = "-"
+var string mem_tp2_s = "-"
+var string mem_tp2_desc_str = "TP 2" 
+var bool is_be_active = false 
+var bool is_tp2_broken = false 
+var bool is_sl_broken = false // [NEW] Variable status SL jebol
+var float mem_tp2_fib = na 
+
+bool _trigger_plan = c_sig_combo or c_sig_vshape or c_sig_gamma or c_sig_beta
+bool _date_ok = true
+if use_date_filter
+    _date_ok := (time >= filter_start) and (time <= filter_end)
+
+var box tp1_zone = na
+var box tp2_zone = na
+var box sl_zone = na
+var box entry_zone = na
+var line e1_line = na
+var line e2_line = na
+var line e3_line = na
+var line e4_line = na
+var label e1_lbl = na
+var label e2_lbl = na
+var label e3_lbl = na
+var label e4_lbl = na
+var label tp1_txt = na
+var label tp2_txt = na
+var label sl_txt = na
+
+float _pl_struct = ta.pivotlow(low, pivot_left, pivot_right)
+var float _last_struct_low = na
+if not na(_pl_struct)
+    _last_struct_low := _pl_struct
+
+if _trigger_plan and _date_ok
+    // NO HISTORY MODE ENFORCED
+    box.delete(tp1_zone), box.delete(tp2_zone), box.delete(sl_zone), box.delete(entry_zone)
+    line.delete(e1_line), line.delete(e2_line), line.delete(e3_line), line.delete(e4_line)
+    label.delete(e1_lbl), label.delete(e2_lbl), label.delete(e3_lbl), label.delete(e4_lbl)
+    label.delete(tp1_txt), label.delete(tp2_txt), label.delete(sl_txt)
+    
+    // Reset Variables
+    is_be_active := false 
+    is_tp2_broken := false 
+    is_sl_broken := false // [NEW] Reset SL status
+    mem_trail_sl := na // [NEW] Reset Trailing
+    
+    // =========================================================================
+    // HYBRID CALCULATION (OLD SCRIPT TP2 + BORODEN EXPANSION)
+    // =========================================================================
+    
+    // --- 1. Struktur & Anchor ---
+    float _raw_anchor = not na(_last_struct_low) ? _last_struct_low : low
+    float _anchor_low = low < _raw_anchor ? low : _raw_anchor
+    float _struct_ref = close // Titik referensi High/Close terakhir
+    
+    // --- 2. Harga Entry ---
+    // [UPDATED] Use dynamic `use_manual` and `use_man_pr`
+    float _e1_raw = use_manual and use_man_pr > 0 ? use_man_pr : _struct_ref
+    float _e1 = f_tick_idx(_e1_raw)
+
+    // --- 3. Hitung Range Struktur ---
+    float _struct_range_fix = _struct_ref - _anchor_low
+    if _struct_range_fix <= 0
+        _struct_ref := close
+        _e1 := f_tick_idx(close)
+        _struct_range_fix := close - _anchor_low
+    
+    // SL Buffer
+    float _sl_buffer = _atr_global * 0.2
+    float _sl_level = f_tick_idx(_anchor_low - _sl_buffer) 
+
+    // --- STANDARD GRID CALCULATION (ORIGINAL) ---
+    float _e2_raw = _anchor_low + (_struct_range_fix * 0.5) 
+    float _e3_raw = _anchor_low + (_struct_range_fix * 0.382)
+    float _e4_raw = _anchor_low + (_struct_range_fix * 0.214) 
+
+    // Finalisasi Level
+    float _e2 = f_tick_idx(_e2_raw)
+    float _e3 = f_tick_idx(_e3_raw)
+    float _e4 = f_tick_idx(_e4_raw)
+    
+    // Simpan ke Memory Awal
+    mem_e1 := _e1, mem_e2 := _e2, mem_e3 := _e3, mem_e4 := _e4, mem_sl := _sl_level
+    float _risk_per_share = _e1 - _sl_level
+
+    // --- HITUNG TP1 (LOGIC LAMA V7.10) ---
+    float _min_tp1 = _e1 + (_risk_per_share * 1.5) // Min 1.5R
+    float _final_tp1 = na
+    
+    if not na(_tp1_raw) and _tp1_raw >= _min_tp1
+        _final_tp1 := _tp1_raw
+    else
+        _final_tp1 := _min_tp1
+        
+    _final_tp1 := f_tick_idx(_final_tp1)
+
+    // --- HITUNG TP2 INITIAL (LOGIC LAMA V7.10: SMART/3R) ---
+    float _min_tp2 = _e1 + (_risk_per_share * 3.0)
+    float _final_tp2 = na
+    // Logic V7.10 Original:
+    if not na(_tp2_raw) and _tp2_raw >= _min_tp2
+        _final_tp2 := _tp2_raw
+    else if not na(_tp2_raw) and _tp2_raw > _final_tp1
+        _final_tp2 := _tp2_raw
+    else
+        _final_tp2 := math.max(_min_tp2, _final_tp1 * 1.1)
+    
+    _final_tp2 := f_tick_idx(_final_tp2)
+    string _desc_tp2_initial = "TP 2 (Smart/3R)"
+
+    // --- HITUNG TP2 EXPANSION (LOGIC BORODEN: FIBO 1.618) ---
+    float _fib_161 = _anchor_low + (_struct_range_fix * 1.618)
+    float _tp2_fib = f_tick_idx(_fib_161)
+    
+    // Safety: Jika Fibo 1.618 < TP2 Awal, paksa sama
+    if _tp2_fib < _final_tp2
+        _tp2_fib := _final_tp2
+
+    mem_tp1 := _final_tp1
+    mem_tp2 := _final_tp2        // Default: Pakai TP2 Lama Dulu
+    mem_tp2_fib := _tp2_fib      // Simpan Target Expansion
+
+    mem_tp1_t := _tp1_tests, mem_tp2_t := _tp2_tests
+    mem_tp1_s := _tp1_st, mem_tp2_s := _tp2_st 
+    mem_tp2_desc_str := _desc_tp2_initial 
+    
+    // --- GAMBAR VISUAL ENTRY ---
+    int _end_x = bar_index + 12
+    if show_buy_lines
+        entry_zone := box.new(left=bar_index, top=_e1, right=_end_x, bottom=_e4, bgcolor=color.new(c_up_fix, 92), border_color=na)
+        string _txt_e1 = (use_manual ? "Buy 1 (Man): " : "Buy 1 (Mkt): ") + str.tostring(_e1, "#")
+        e1_line := line.new(bar_index, _e1, _end_x, _e1, color=color.new(c_white_fix, 50), style=line.style_dotted)
+        e1_lbl := label.new(_end_x, _e1, text=_txt_e1, color=color.new(c_black_fix,100), textcolor=color.white, style=label.style_label_left, size=buy_txt_size)
+        e2_line := line.new(bar_index, _e2, _end_x, _e2, color=color.new(c_white_fix, 50), style=line.style_dotted)
+        e2_lbl := label.new(_end_x, _e2, text="Buy 2 (50%): " + str.tostring(_e2, "#"), color=color.new(c_black_fix,100), textcolor=color.white, style=label.style_label_left, size=buy_txt_size)
+        e3_line := line.new(bar_index, _e3, _end_x, _e3, color=color.new(c_white_fix, 50), style=line.style_dotted)
+        e3_lbl := label.new(_end_x, _e3, text="Buy 3 (61.8%): " + str.tostring(_e3, "#"), color=color.new(c_black_fix,100), textcolor=color.white, style=label.style_label_left, size=buy_txt_size)
+        
+        // Buy 4 (Standard)
+        e4_line := line.new(bar_index, _e4, _end_x, _e4, color=color.new(c_orange, 50), style=line.style_dotted)
+        e4_lbl := label.new(_end_x, _e4, text="Buy 4 (78.6%): " + str.tostring(_e4, "#"), color=color.new(c_black_fix,100), textcolor=c_orange, style=label.style_label_left, size=buy_txt_size)
+
+    if show_tp_sl
+        tp1_zone := box.new(left=bar_index, top=_final_tp1, right=_end_x, bottom=close, bgcolor=c_tp_zone, border_color=na)
+        // [FIX] Mengubah size=size.small menjadi size=buy_txt_size
+        tp1_txt := label.new(_end_x, _final_tp1, text="TP 1 (Struct): " + str.tostring(_final_tp1, "#"), color=color.new(c_black_fix,100), textcolor=c_up_fix, style=label.style_label_left, size=buy_txt_size)
+        
+        tp2_zone := box.new(left=bar_index, top=_final_tp2, right=_end_x, bottom=_final_tp1, bgcolor=c_tp_zone2, border_color=na)
+        // [FIX] Mengubah size=size.small menjadi size=buy_txt_size
+        tp2_txt := label.new(_end_x, _final_tp2, text= mem_tp2_desc_str + ": " + str.tostring(_final_tp2, "#"), color=color.new(c_black_fix,100), textcolor=c_up_fix, style=label.style_label_left, size=buy_txt_size)
+        
+        sl_zone := box.new(left=bar_index, top=close, right=_end_x, bottom=_sl_level, bgcolor=color.new(c_dn_fix, 85), border_color=na)
+        // [FIX] Mengubah size=size.small menjadi size=buy_txt_size
+        sl_txt := label.new(_end_x, _sl_level, text="SL (Struct): " + str.tostring(_sl_level, "#"), color=color.new(c_black_fix,100), textcolor=c_dn_fix, style=label.style_label_left, size=buy_txt_size)
+
+// =========================================================================
+// UPGRADE C: DYNAMIC STATE MACHINE (FIXED SL LOGIC)
+// =========================================================================
+
+// 1. LOGIC STOP LOSS HIT (KILL SWITCH) - PRIORITAS TERTINGGI
+// Jika harga close di bawah SL, tandai SL Broken.
+if not na(mem_sl) and close < mem_sl and not is_sl_broken
+    is_sl_broken := true
+
+// 2. LOGIC BREAKEVEN (Hanya jika SL belum jebol)
+if not na(mem_tp1) and high >= mem_tp1 and not is_sl_broken
+    is_be_active := true
+
+// 3. LOGIC TARGET EXPANSION (Hanya jika SL belum jebol)
+if not na(mem_tp2) and high >= mem_tp2 and not is_tp2_broken and not is_sl_broken
+    is_tp2_broken := true
+    // Update variable memory agar tabel HUD juga berubah
+    mem_tp2 := mem_tp2_fib 
+    mem_tp2_desc_str := "TP 2 (Fib 1.618)"
+
+// --- VISUAL UPDATE LOOP (THE FIX) ---
+// =========================================================================
+if use_trail and not na(mem_tp1) and not is_sl_broken
+    // Trigger: Hanya mulai hitung jika TP1 sudah kena (BE Active)
+    if is_be_active 
+        // 1. Hitung Level Trailing Murni (ATR Ratchet)
+        float _atr_dynamic = ta.atr(14)
+        
+        // [FIX] Kalkulasi Trailing: Hard Stop Calculation
+        float _calc_trail = trail_src - (_atr_dynamic * trail_mult)
+        float _calc_trail_tick = f_tick_idx(_calc_trail)
+
+        // 2. Tentukan "Lantai" (Floor)
+        // Jika Force BE nyala, floor = Entry Price. Jika mati, floor = SL Awal.
+        float _floor_logic = nz(force_be ? mem_e1 : mem_sl, 0.0)
+
+        // 3. The Ratchet Logic (Hanya Naik, Pantang Turun)
+        if na(mem_trail_sl)
+            // Inisialisasi Pertama
+            mem_trail_sl := math.max(_calc_trail_tick, _floor_logic)
+        else
+            // Update Bar-to-Bar: Kunci nilai tertinggi
+            mem_trail_sl := math.max(_calc_trail_tick, math.max(mem_trail_sl, _floor_logic))
+
+    // 4. Kill Switch (Realistis: Hard Stop pada Low, bukan Close)
+    if not na(mem_trail_sl) and low <= mem_trail_sl
+        is_sl_broken := true
+// Logic Warna SL Box: Dark if broken, Gray if BE, Red if Normal
+color _visual_sl_bg = is_sl_broken ? color.new(#363A45, 40) : (is_be_active ? color.new(color.gray, 80) : color.new(c_dn_fix, 85))
+
+// --- LOGIC HIERARKI VISUAL (ADAPTIVE - SMART POSITIONING) ---
+float _visual_sl_level = mem_sl 
+string _label_sl_pref = "SL (Struct): "
+
+// 1. KONDISI MASIH JALAN (ACTIVE TRADE)
+if is_be_active and not is_sl_broken
+    if use_trail and not na(mem_trail_sl)
+        if mem_trail_sl > mem_e1
+            _visual_sl_level := mem_trail_sl
+            _label_sl_pref := "🔒 LOCKER: "
+        else if mem_trail_sl == mem_e1
+            _visual_sl_level := mem_trail_sl
+            _label_sl_pref := "🛡️ RISK FREE: "
+        else
+            _visual_sl_level := mem_trail_sl
+            _label_sl_pref := "📉 TRAIL (Soft): "
+    else
+        _visual_sl_level := mem_e1
+        _label_sl_pref := "🛡️ RISK FREE: "
+
+// 2. KONDISI SUDAH JEBOL (HISTORY/STOPPED)
+string _visual_sl_txt = _label_sl_pref + str.tostring(_visual_sl_level, "#")
+color _visual_txt_col = c_dn_fix
+
+if is_sl_broken
+    // Logic Cerdas: Dimana harga kenanya?
+    
+    // A. KENA LOCKER (Cuan) -> Posisi di Harga Locker
+    if not na(mem_trail_sl) and mem_trail_sl > mem_e1
+        _visual_sl_level := mem_trail_sl // <--- Label naik ke harga Cuan
+        _visual_sl_txt := "💰 LOCKER HIT" 
+        _visual_txt_col := c_lime
+
+    // B. KENA RISK FREE (Impas) -> Posisi di Harga Entry
+    else if not na(mem_trail_sl) and mem_trail_sl == mem_e1
+        _visual_sl_level := mem_trail_sl // <--- Label naik ke Harga Modal
+        _visual_sl_txt := "🛡️ RISK FREE HIT"
+        _visual_txt_col := color.gray
+
+    // C. KENA STOP LOSS (Rugi) -> Posisi Tetap di Bawah
+    else
+        _visual_sl_level := mem_sl 
+        _visual_sl_txt := "⛔ STOPPED OUT"
+        _visual_txt_col := c_dn_fix
+else
+    // Jika belum jebol, warna teks mengikuti status BE
+    _visual_txt_col := is_be_active ? color.gray : c_dn_fix
+    
+// Logic TP Visibility (Jika SL Jebol, TP harus hilang/hidden)
+color _tp_bg_mod = is_sl_broken ? color.new(color.gray, 100) : c_tp_zone    // Invisible jika SL kena
+color _tp2_bg_mod = is_sl_broken ? color.new(color.gray, 100) : c_tp_zone2  // Invisible jika SL kena
+color _tp_txt_mod = is_sl_broken ? color.new(color.gray, 100) : c_up_fix    // Invisible text
+
+if show_tp_sl and not na(tp1_zone)
+    // Update Posisi ke Kanan
+    int _new_x = bar_index + 12
+    box.set_right(tp1_zone, _new_x), box.set_right(tp2_zone, _new_x), box.set_right(sl_zone, _new_x)
+    label.set_x(tp1_txt, _new_x), label.set_x(tp2_txt, _new_x), label.set_x(sl_txt, _new_x)
+
+    // Update SL Zone (Visual Kill Switch)
+    box.set_top(sl_zone, close)
+    box.set_bottom(sl_zone, _visual_sl_level)
+    box.set_bgcolor(sl_zone, _visual_sl_bg) // Updated Color (Dark if broken)
+    
+    label.set_y(sl_txt, _visual_sl_level)
+    label.set_text(sl_txt, _visual_sl_txt) // Updated Text
+    label.set_textcolor(sl_txt, _visual_txt_col)
+
+    // Update TP Zones (Hide if Broken)
+    box.set_top(tp1_zone, mem_tp1)
+    box.set_bottom(tp1_zone, close)
+    box.set_bgcolor(tp1_zone, _tp_bg_mod) // Jadi invisible jika SL kena
+    label.set_textcolor(tp1_txt, _tp_txt_mod)
+
+    box.set_top(tp2_zone, mem_tp2) 
+    box.set_bottom(tp2_zone, mem_tp1)
+    label.set_y(tp2_txt, mem_tp2)
+    label.set_text(tp2_txt, mem_tp2_desc_str + ": " + str.tostring(mem_tp2, "#"))
+    box.set_bgcolor(tp2_zone, _tp2_bg_mod) // Jadi invisible jika SL kena
+    label.set_textcolor(tp2_txt, _tp_txt_mod)
+
+// Labels & Demand Box
+float ph = ta.pivothigh(high, pivot_left, pivot_right)
+float pl = ta.pivotlow(low, pivot_left, pivot_right)
+var float prev_ph = na
+var float prev_pl = na
+var float prev_pl_rsi_val = na
+var float prev_pl_price = na
+
+if not na(ph)
+    string _lbl = not na(prev_ph) ? (ph > prev_ph ? "HH" : "LH") : "H"
+    color _col = _lbl == "HH" ? c_blue_lbl : c_dn_fix
+    if show_struct_lbl
+        label.new(bar_index - pivot_right, ph, text=_lbl, style=label.style_label_down, color=color.new(_col, 100), textcolor=_col, size=size.tiny)
+    prev_ph := ph
+
+if not na(pl)
+    string _lbl = not na(prev_pl) ? (pl > prev_pl ? "HL" : "LL") : "L"
+    color _col = _lbl == "HL" ? c_blue_lbl : c_dn_fix
+    if show_struct_lbl
+        label.new(bar_index - pivot_right, pl, text=_lbl, style=label.style_label_up, color=color.new(_col, 100), textcolor=_col, size=size.tiny)
+        
+    float _curr_rsi = c_rsi[pivot_right]
+    bool _is_div = false
+    if not na(prev_pl_price) and not na(prev_pl_rsi_val)
+        bool _price_lower = pl < prev_pl_price
+        bool _rsi_higher = _curr_rsi > prev_pl_rsi_val
+        bool _was_oversold = prev_pl_rsi_val < 35
+        if _price_lower and _rsi_higher and _was_oversold
+            _is_div := true
+            
+    if _is_div and show_div
+        label.new(bar_index - pivot_right, pl, text="BOTTOM?", style=label.style_label_up, color=c_lime, textcolor=color.black, size=size.small)
+    prev_pl_price := pl
+    prev_pl_rsi_val := _curr_rsi
+    prev_pl := pl
+
+var box demand_box = na
+if show_ob and not na(c_dem_top)
+    box.delete(demand_box)
+    color _box_col = c_close < c_dem_bot ? color.new(c_dn_fix, 90) : c_ob_fill
+    demand_box := box.new(left=bar_index - 10, top=c_dem_top, right=bar_index + 5, bottom=c_dem_bot, border_color=color.new(c_blue_lbl, 50), border_width=1, bgcolor=_box_col)
+
+// ==========================================
+// 6b. ADVANCED VISUAL: GHOST BLOCKS (REJECTION HUNTER)
+// ==========================================
+type srZone
+    float top
+    float bottom
+    bool is_up
+    box id_box
+    bool active
+
+var srZone[] arr_zones = array.new<srZone>() 
+
+float _ph_sr = ta.pivothigh(high, sr_strength, sr_strength)
+float _pl_sr = ta.pivotlow(low, sr_strength, sr_strength)
+
+if show_ghost_sr
+    // --- SMART DETECTION LOGIC ---
+    bool _use_wick = true
+    if sr_calc_mode == "Wick (Ekor)"
+        _use_wick := true
+    else if sr_calc_mode == "Body (Badan)"
+        _use_wick := false
+    else
+        float _body_sz = math.abs(close[sr_strength] - open[sr_strength])
+        float _range_sz = high[sr_strength] - low[sr_strength]
+        float _upper_wick = high[sr_strength] - math.max(close[sr_strength], open[sr_strength])
+        float _lower_wick = math.min(close[sr_strength], open[sr_strength]) - low[sr_strength]
+        float _wick_sz = math.max(_upper_wick, _lower_wick)
+        bool _is_rejection = (_wick_sz > (_range_sz * 0.3))
+        if _is_rejection
+            _use_wick := true
+        else
+            _use_wick := _wick_sz > _body_sz
+
+    // --- RESISTANCE LOGIC ---
+    if not na(_ph_sr)
+        float _c_piv = close[sr_strength]
+        float _o_piv = open[sr_strength]
+        float _max_body = math.max(_c_piv, _o_piv)
+        float _min_body = math.min(_c_piv, _o_piv)
+        
+        float _box_top = _use_wick ? _ph_sr : _max_body
+        float _box_bot = _use_wick ? _max_body : _min_body
+        box _b = box.new(bar_index - sr_strength, _box_top, bar_index + 5, _box_bot, border_color = na, bgcolor = color.new(c_dn_fix, 85))
+        srZone _new_zone = srZone.new(_box_top, _box_bot, true, _b, true)
+        array.push(arr_zones, _new_zone)
+
+    // --- SUPPORT LOGIC ---
+    if not na(_pl_sr)
+        float _c_piv = close[sr_strength]
+        float _o_piv = open[sr_strength]
+        float _max_body = math.max(_c_piv, _o_piv)
+        float _min_body = math.min(_c_piv, _o_piv)
+        
+        float _box_bot = _use_wick ? _pl_sr : _min_body
+        float _box_top = _use_wick ? _min_body : _max_body
+        box _b = box.new(bar_index - sr_strength, _box_top, bar_index + 5, _box_bot, border_color = na, bgcolor = color.new(c_up_fix, 85))
+        srZone _new_zone = srZone.new(_box_top, _box_bot, false, _b, true)
+        array.push(arr_zones, _new_zone)
+
+    // --- MAINTENANCE LOOP ---
+    if array.size(arr_zones) > 0
+        for i = array.size(arr_zones) - 1 to 0
+            srZone _z = array.get(arr_zones, i)
+            if _z.active
+                box.set_right(_z.id_box, bar_index + 5)
+                bool _break = false
+                if _z.is_up
+                    if close > _z.top
+                        _break := true
+                else
+                    if close < _z.bottom
+                        _break := true
+                
+                if _break
+                    _z.active := false
+                    if hide_broken
+                        box.delete(_z.id_box)
+                        array.remove(arr_zones, i)
+                    else
+                        box.set_bgcolor(_z.id_box, color.new(color.gray, 95))
+                        box.set_border_style(_z.id_box, line.style_dotted)
+                        box.set_right(_z.id_box, bar_index)
+            if not hide_broken and not _z.active and (bar_index - box.get_left(_z.id_box) > 500)
+                box.delete(_z.id_box)
+                array.remove(arr_zones, i)
+        
+        if array.size(arr_zones) > sr_lookback + 5
+            srZone _old = array.shift(arr_zones)
+            box.delete(_old.id_box)
+
+plotshape(show_signals and c_sig_combo, "Sniper Combo", style=f_get_shape(s_sniper_in), location=location.belowbar, color=c_sniper_in, text="SNIPER", textcolor=c_sniper_in, size=size.small)
+plotshape(show_signals and c_sig_beta, "Beta Breakout", style=f_get_shape(s_beta_in), location=location.belowbar, color=c_beta_in, text="BETA", textcolor=c_beta_in, size=size.small)
+// 1. Plot untuk GAMMA BIASA (Jika sinyal Gamma aktif TAPI status text BUKAN "G ACC")
+plotshape(show_signals and c_sig_gamma and c_sig_txt != "G ACC", "Gamma Pump", style=f_get_shape(s_gamma_in), location=location.belowbar, color=c_gamma_in, text="GAMMA", textcolor=c_black_fix, size=size.tiny)
+
+// 2. Plot khusus untuk G ACC (Jika sinyal Gamma aktif DAN status text ADALAH "G ACC")
+plotshape(show_signals and c_sig_gamma and c_sig_txt == "G ACC", "G ACC Signal", style=f_get_shape(s_gamma_in), location=location.belowbar, color=c_gamma_in, text="G ACC", textcolor=c_black_fix, size=size.tiny)
+plotshape(show_signals and c_sig_vshape, "V-Shape Signal", style=f_get_shape(s_vshape_in), location=location.belowbar, color=c_vshape_in, text="V-SHAPE", textcolor=c_vshape_in, size=size.small)
+plotshape(show_signals and c_sig_early, "Early Sweep", style=f_get_shape(s_early_in), location=location.belowbar, color=c_early_in, text="EARLY", textcolor=c_early_in, size=size.small)
+
+// ==========================================
+// 7. INTELLIGENT SCANNER (FINAL: BALANCED SCORE & NO ERROR)
+// ==========================================
+
+// --- a. Data Structure Update ---
+type scanData
+    string ticker
+    float price
+    float change_pct
+    string status       // Trend Status
+    color status_col
+    string signal       // Current Signal
+    color signal_col
+    string regime       // RISEN Regime
+    color regime_col
+    string quadrant     // Trend Strength (RRG Proxy)
+    color quad_col
+    float rvol          // Relative Volume
+    int age_days        // Umur sinyal dalam HARI KALENDER
+    float sort_score    // Untuk Sorting
+
+// --- b. Wrapper: Full Logic Replica (Optimized) ---
+f_scan_wrapper() =>
+    // 1. ENGINE CALL
+    [v_e1, v_e2, v_e3, v_stop, v_dir, sig_combo, sig_gamma, sig_v, sig_early, st_txt, st_col, si_txt, si_col, cls, chg, v_rsi, d_bot, d_top, adx_v, sig_beta] = f_calc_engine(use_fvg_filt, gamma_agresif, c_sniper_in, c_beta_in, c_gamma_in, c_vshape_in, c_early_in)
+    
+    // 2. RISEN LOGIC
+    float v_sma_15 = ta.sma(volume, 15)
+    bool v_surge = volume > (v_sma_15 * r_vol_mult)
+    
+    float r_hh = ta.highest(close, r_lookback_y)[1]
+    float r_ll = ta.lowest(close, r_lookback_y)[1]
+    float r_rollHigh = ta.highest(high, 15)[1]
+    bool r_inside = close <= r_rollHigh and close >= ta.lowest(low, 15)[1]
+
+    float th_up = r_hh * (1.0 + r_thresh_pct / 100.0)
+    float th_dn = r_ll * (1.0 - r_thresh_pct / 100.0)
+    
+    bool is_exp   = (close > th_up) and v_surge
+    bool is_crash = (close < th_dn) and v_surge
+    
+    bool is_gamma_breakout = sig_gamma and (is_exp or (close > r_hh and v_surge))
+    bool is_gamma_squeeze  = sig_gamma and r_inside 
+    bool smart_gamma_trig  = is_gamma_breakout or is_gamma_squeeze
+    
+    bool final_gamma = sig_gamma
+    if show_risen
+        if smart_gamma_trig
+            final_gamma := true
+        else
+            final_gamma := false
+
+    // 3. AGE CALCULATION
+    bool any_buy = sig_combo or sig_beta or final_gamma or sig_v or sig_early
+    int last_buy_ms = ta.valuewhen(any_buy, time, 0)
+    int ms_elapsed = time - last_buy_ms
+    int days_ago = not na(last_buy_ms) ? math.round(ms_elapsed / 86400000) : 999
+    
+    // 4. RISEN STRING OUTPUT
+    bool is_up_reg    = (close > r_hh) and not is_exp
+    bool is_down_reg  = (close < r_ll) and not is_crash
+    string r_txt = is_exp ? "EXPLOSIVE" : (is_crash ? "CRASH ⚠️" : (is_up_reg ? "UPTREND" : (is_down_reg ? "DOWNTREND" : "SIDEWAYS")))
+    color r_col  = is_exp ? color.lime : (is_crash ? color.red : (is_up_reg ? color.green : (is_down_reg ? #B71C1C : color.yellow)))
+
+    // 5. INTERNAL MOMENTUM QUADRANT (Fix Request Limit)
+    float _base = ta.ema(close, 60) 
+    float _ratio = 100 * (close / _base) 
+    float _mom = ta.mom(_ratio, 10)      
+    
+    bool q_lead = (_ratio > 100) and (_mom > 0)  
+    bool q_weak = (_ratio > 100) and (_mom <= 0) 
+    bool q_impr = (_ratio <= 100) and (_mom > 0) 
+    
+    string q_txt = q_lead ? "LEAD" : (q_impr ? "IMPR" : (q_weak ? "WEAK" : "LAGG"))
+    color q_col = q_lead ? c_up_fix : (q_impr ? c_cyan_fix : (q_weak ? c_orange : c_dn_fix))
+
+    // 6. RVol Data
+    float v_sma20 = ta.sma(volume, 20)
+    
+    [st_txt, st_col, si_txt, si_col, cls, chg, r_txt, r_col, days_ago, volume, v_sma20, q_txt, q_col]
+
+// --- c. Request Function Updated ---
+f_req_smart_scan(_sym) =>
+    scanData _res = scanData.new()
+    _res.ticker := f_clean_ticker(_sym)
+    
+    if str.length(_sym) > 0
+        // Request Security
+        [st_txt, st_col, si_txt, si_col, cls, chg, r_txt, r_col, d_ago, v_now, v_avg, q_txt, q_col] = request.security(_sym, scan_tf, f_scan_wrapper())
+        
+        // Populate Data
+        _res.price := cls
+        _res.change_pct := chg
+        _res.status := st_txt
+        _res.status_col := st_col
+        _res.signal := si_txt
+        _res.signal_col := si_col
+        _res.regime := r_txt
+        _res.regime_col := r_col
+        _res.quadrant := q_txt
+        _res.quad_col := q_col
+        
+        _res.rvol := v_avg != 0 ? v_now / v_avg : 0.0
+        _res.age_days := d_ago
+        
+        // --- SCORING SYSTEM (BALANCED / CERDAS) ---
+        float _score = 0.0
+        
+        // 1. Sinyal Baru (Fresh)
+        if _res.age_days <= 3 and _res.signal != "WAIT" and _res.signal != "AVOID" and _res.signal != "HOLD"
+            _score += 3000
+        
+        // 2. Sinyal Aktif (Base Score)
+        if _res.age_days < 999
+            _score += 1000
+            // Penalty umur yang Wajar (Tidak se-agresif versi Strict)
+            _score -= (_res.age_days * 2) 
+        
+        // 3. Regime Bonus (Agar saham Juara tetap naik)
+        if _res.regime == "EXPLOSIVE"
+            _score += 500
+        else if _res.regime == "CRASH ⚠️"
+            _score += 400
+        
+        // 4. Quadrant Bonus (Saham Leading dapat prioritas)
+        if _res.quadrant == "LEAD"
+            _score += 100
+        else if _res.quadrant == "IMPR"
+            _score += 50
+            
+        // 5. Volume Bonus
+        if _res.rvol > 2.0
+            _score += 20
+            
+        _res.sort_score := _score
+
+    _res
+
+// --- d. Fetching & Sorting ---
+sd01=f_req_smart_scan(s01), sd02=f_req_smart_scan(s02), sd03=f_req_smart_scan(s03), sd04=f_req_smart_scan(s04), sd05=f_req_smart_scan(s05)
+sd06=f_req_smart_scan(s06), sd07=f_req_smart_scan(s07), sd08=f_req_smart_scan(s08), sd09=f_req_smart_scan(s09), sd10=f_req_smart_scan(s10)
+sd11=f_req_smart_scan(s11), sd12=f_req_smart_scan(s12), sd13=f_req_smart_scan(s13), sd14=f_req_smart_scan(s14), sd15=f_req_smart_scan(s15)
+sd16=f_req_smart_scan(s16), sd17=f_req_smart_scan(s17), sd18=f_req_smart_scan(s18), sd19=f_req_smart_scan(s19), sd20=f_req_smart_scan(s20)
+
+if barstate.islast and show_scanner
+    scanData[] arr_sd = array.new<scanData>()
+    array.push(arr_sd, sd01), array.push(arr_sd, sd02), array.push(arr_sd, sd03), array.push(arr_sd, sd04), array.push(arr_sd, sd05)
+    array.push(arr_sd, sd06), array.push(arr_sd, sd07), array.push(arr_sd, sd08), array.push(arr_sd, sd09), array.push(arr_sd, sd10)
+    array.push(arr_sd, sd11), array.push(arr_sd, sd12), array.push(arr_sd, sd13), array.push(arr_sd, sd14), array.push(arr_sd, sd15)
+    array.push(arr_sd, sd16), array.push(arr_sd, sd17), array.push(arr_sd, sd18), array.push(arr_sd, sd19), array.push(arr_sd, sd20)
+
+    // Bubble Sort
+    int len = array.size(arr_sd)
+    for i = 0 to len - 2
+        for j = 0 to len - 2 - i
+            scanData d_now = array.get(arr_sd, j)
+            scanData d_next = array.get(arr_sd, j + 1)
+            if d_next.sort_score > d_now.sort_score
+                array.set(arr_sd, j, d_next)
+                array.set(arr_sd, j + 1, d_now)
+
+    // --- DRAW TABLE (7 COLUMNS) ---
+    var table t_scan = table.new(scanner_pos, 7, 22, bgcolor=color.new(c_black_fix, 10), frame_color=color.new(c_gray_fix, 80), frame_width=1, border_width=1)
+    
+    table.merge_cells(t_scan, 0, 0, 6, 0)
+    table.cell(t_scan, 0, 0, "🚀 INTELLIGENT SCANNER (" + scan_tf + ")", text_color=color.white, bgcolor=#1E88E5, text_size=scan_size)
+    
+    color _h_bg = color.new(c_black_fix, 30)
+    table.cell(t_scan, 0, 1, "TICKER", text_color=c_gray_fix, bgcolor=_h_bg, text_size=scan_size)
+    table.cell(t_scan, 1, 1, "PRICE", text_color=c_gray_fix, bgcolor=_h_bg, text_size=scan_size)
+    table.cell(t_scan, 2, 1, "RRG",    text_color=c_gray_fix, bgcolor=_h_bg, text_size=scan_size)
+    table.cell(t_scan, 3, 1, "REGIME", text_color=c_gray_fix, bgcolor=_h_bg, text_size=scan_size)
+    table.cell(t_scan, 4, 1, "SIGNAL", text_color=c_gray_fix, bgcolor=_h_bg, text_size=scan_size)
+    table.cell(t_scan, 5, 1, "AGE",    text_color=c_gray_fix, bgcolor=_h_bg, text_size=scan_size)
+    table.cell(t_scan, 6, 1, "VOL",    text_color=c_gray_fix, bgcolor=_h_bg, text_size=scan_size)
+
+    for i = 0 to array.size(arr_sd) - 1
+        scanData _d = array.get(arr_sd, i)
+        if str.length(_d.ticker) > 0
+            int _r = i + 2
+            color _row_bg = i % 2 == 0 ? color.new(c_black_fix, 50) : color.new(c_black_fix, 40)
+            
+            // 1. Ticker
+            table.cell(t_scan, 0, _r, _d.ticker, text_color=color.white, text_size=scan_size, bgcolor=_row_bg)
+            
+            // 2. Price
+            color _p_col = _d.change_pct >= 0 ? c_up_fix : c_dn_fix
+            string _pt = str.tostring(_d.price, format.mintick)
+            table.cell(t_scan, 1, _r, _pt, text_color=_p_col, text_size=scan_size, bgcolor=_row_bg)
+            
+            // 3. RRG
+            table.cell(t_scan, 2, _r, _d.quadrant, text_color=_d.quad_col, bgcolor=_row_bg, text_size=scan_size)
+            
+            // 4. REGIME
+            table.cell(t_scan, 3, _r, _d.regime, text_color=_d.regime_col, bgcolor=_row_bg, text_size=scan_size)
+            
+            // 5. Signal
+            color _bg_sig = _row_bg
+            if _d.signal != "WAIT" and _d.signal != "AVOID"
+                _bg_sig := color.new(_d.signal_col, 70) 
+            table.cell(t_scan, 4, _r, _d.signal, text_color=_d.signal_col, bgcolor=_bg_sig, text_size=scan_size)
+            
+            // 6. AGE
+            string _age_txt = "-"
+            color _age_col = c_gray_fix
+            if _d.age_days < 999
+                if _d.age_days <= 1
+                    _age_txt := "NEW"
+                    _age_col := c_lime
+                else
+                    _age_txt := str.tostring(_d.age_days) + "d"
+                    _age_col := c_white_fix
+            table.cell(t_scan, 5, _r, _age_txt, text_color=_age_col, bgcolor=_row_bg, text_size=scan_size)
+
+            // 7. Volume
+            string _vol_txt = str.tostring(_d.rvol, "#.1") + "x"
+            color _vol_col = _d.rvol >= 2.0 ? c_magenta : (_d.rvol >= 1.0 ? c_up_fix : c_gray_fix)
+            table.cell(t_scan, 6, _r, _vol_txt, text_color=_vol_col, bgcolor=_row_bg, text_size=scan_size)
+            
+// 8. GLOBAL CALCULATION (FOR INSIGHT HUD)
+// ==========================================
+
+float _src_log_calc = math.log(close / close[1])
+float _bench_log_calc = math.log(bench_close / bench_close[1])
+float _mean_src_log = ta.sma(_src_log_calc, risk_lookback)
+float _mean_bench_log = ta.sma(_bench_log_calc, risk_lookback)
+float _mean_cross = ta.sma(_src_log_calc * _bench_log_calc, risk_lookback)
+float _cov_calc = _mean_cross - (_mean_src_log * _mean_bench_log)
+float _var_bnch_calc = ta.variance(_bench_log_calc, risk_lookback)
+float _beta_final = _var_bnch_calc != 0 ? _cov_calc / _var_bnch_calc : 1.0
+
+float _diff_ret_calc = _src_log_calc - _bench_log_calc
+float _te_daily_calc = ta.stdev(_diff_ret_calc, risk_lookback)
+float _te_ann_final = _te_daily_calc * math.sqrt(252) * 100
+float _ir_final = _te_ann_final != 0 ? q_alpha / _te_ann_final : 0.0
+
+float _vol_short = ta.stdev(_src_log_calc, 20) * math.sqrt(252) * 100
+float _vol_long = q_vol
+float _vol_ratio = _vol_long != 0 ? _vol_short / _vol_long : 1.0
+
+float _hi_52w = ta.highest(high, 252)
+float _dd_pct = ((close - _hi_52w) / _hi_52w) * 100
+
+float _mean_p_calc = ta.sma(close, 50)
+float _std_p_calc = ta.stdev(close, 50)
+float _z_score_final = _std_p_calc != 0 ? (close - _mean_p_calc) / _std_p_calc : 0.0
+
+// ==========================================
+// 9. RIGHT EXECUTION HUD (V7.33: REORDERED VOLUME METRICS)
+// ==========================================
+
+// --- 1. DEFINE CORE METRICS ---
+bool _cur_bull_s = c_close > c_ema21
+bool _cur_bull_m = c_close > c_ema50
+bool _cur_bull_l = c_close > c_ema200
+
+float _cur_rvol = _vol_sma_global != 0 ? volume / _vol_sma_global : 0.0
+bool _vol_boom  = _cur_rvol >= 1.5 
+bool _vol_high  = _cur_rvol >= 1.0 and _cur_rvol < 1.5
+bool _vol_low   = _cur_rvol < 0.6
+
+bool _is_uptrend = c_stat_txt == "UPTREND"
+bool _is_sideways_reg = r_regime == "SIDEWAYS"
+
+// --- 2. HISTORICAL TRACKING (MEMORY) ---
+bool _bull_s_5d = _cur_bull_s[5] 
+float _rvol_3d  = _cur_rvol[3]
+float _avg_rvol_5 = (_cur_rvol + _cur_rvol[1] + _cur_rvol[2] + _cur_rvol[3] + _cur_rvol[4]) / 5.0
+bool _was_lagging = quad_txt[5] == "LAGGING"
+
+// --- 3. CANDLE & PATTERN RECOGNITION (MICRO ANALYSIS) ---
+float _body = math.abs(close - open)
+float _range = high - low
+float _u_wick = high - math.max(close, open)
+float _l_wick = math.min(close, open) - low
+bool _is_green = close > open
+
+// A. Single Candle Shapes
+bool _is_doji       = _range > 0 and (_body / _range) < 0.15
+bool _is_hammer     = _l_wick > (_body * 2) and _u_wick < _body // Bullish Pinbar
+bool _is_star       = _u_wick > (_body * 2) and _l_wick < _body // Bearish Pinbar / Shooting Star
+bool _is_marubozu = _range > 0 and (_body / _range) > 0.80    // Strong Momentum
+
+// B. Dual Candle Patterns (Reversal)
+bool _is_bull_eng = close[1] < open[1] and _is_green and close > open[1] and open < close[1]
+bool _is_bear_eng = close[1] > open[1] and not _is_green and close < open[1] and open > close[1]
+
+// C. VPA Logic (Effort vs Result Analysis)
+bool _vpa_churning = _vol_boom and (_is_doji or (_body < _range * 0.3))
+bool _vpa_valid    = _vol_boom and (_is_marubozu or (_body > _range * 0.6))
+
+// =========================================================
+// 4. THE ULTIMATE DECISION MATRIX (INTEGRATED WITH X-RAY)
+// =========================================================
+string _final_verdict = "WAIT / MONITOR"
+color _final_color = c_gray_fix
+
+// --- A. X-RAY PRE-CALCULATION ---
+bool _xr_active = use_xray and x_vol_total > 0
+float _xr_buy_ratio = _xr_active ? (x_buy_total / x_vol_total) : 0.5
+bool _xr_bullish = _xr_active and _xr_buy_ratio > 0.55
+bool _xr_bearish = _xr_active and _xr_buy_ratio < 0.45
+
+// --- B. MATRIX LOGIC EXECUTION ---
+if (_is_bull_eng or (_is_hammer and _cur_bull_s)) and _cur_rvol > 1.0 and not _xr_bearish
+    _final_verdict := "BULLISH REVERSAL 🔥"
+    _final_color := c_magenta
+else if _vpa_churning
+    if _xr_bearish
+        _final_verdict := "DISTRIBUTION (X-Ray) ⚠️"
+        _final_color := c_dn_fix
+    else if _cur_bull_s
+        _final_verdict := "CHURNING (Trap?) ⚠️"
+        _final_color := c_orange
+    else
+        if _xr_bullish
+            _final_verdict := "ABSORPTION (Buy) ♻️"
+            _final_color := c_lime
+        else
+            _final_verdict := "STOPPING VOL? (Wait)"
+            _final_color := c_gold_fix
+else if _cur_bull_s and _vpa_valid and _avg_rvol_5 < 1.0
+    if _xr_bearish
+        _final_verdict := "FAKE BREAKOUT (X-Ray) ⚠️" 
+        _final_color := c_orange
+    else if _xr_bullish
+        _final_verdict := "VERIFIED BREAKOUT 🚀" 
+        _final_color := c_cyan_fix
+    else
+        _final_verdict := "IGNITION BREAKOUT 🚀" 
+        _final_color := c_cyan_fix
+else if _cur_bull_s and _bull_s_5d and _vol_low
+    if _xr_bullish
+        _final_verdict := "SMART DIP (Accum) 💎" 
+        _final_color := c_lime
+    else if _is_hammer or _is_doji
+        _final_verdict := "PERFECT DIP (Buy) ⭐"
+        _final_color := c_lime
+    else if r_regime != "CRASH / SELL-OFF"
+        _final_verdict := "GOLDEN PULLBACK"
+        _final_color := c_lime
+    else
+        _final_verdict := "WEAK ACTION"
+        _final_color := c_gray_fix
+else if _is_sideways_reg and _cur_rvol > 1.0 and _is_green
+    if _xr_bullish
+        _final_verdict := "SMART ACCUMULATION" 
+        _final_color := c_gold_fix
+    else if _xr_bearish
+        _final_verdict := "SELLING INTO STRENGTH" 
+        _final_color := c_orange
+    else
+        _final_verdict := "ACCUMULATION?"
+        _final_color := c_gold_fix
+else if (_is_star or _is_bear_eng) and (_vol_high or _vol_boom)
+    _final_verdict := "CLIMAX / REJECT ⚠️"
+    _final_color := c_dn_fix
+else if _cur_bull_s and _cur_bull_m and not _vol_low
+    if _xr_bearish and _vol_boom
+        _final_verdict := "DIVERGENCE (Beware) ⚠️"
+        _final_color := c_orange
+    else
+        _final_verdict := "STEADY UPTREND"
+        _final_color := c_up_fix
+else if not _cur_bull_s
+    _final_verdict := "BEARISH / AVOID"
+    _final_color := c_dn_fix
+
+// =========================================================
+// 5. EXECUTION & DISPLAY LOGIC
+// =========================================================
+
+bool _is_passive = (c_sig_txt == "WAIT" or c_sig_txt == "HOLD" or c_sig_txt == "AVOID" or c_sig_txt == "AVOID (Vol Mati)")
+
+if _is_passive
+    c_sig_txt := _final_verdict
+    c_sig_col := _final_color
+else
+    if _final_verdict == "CHURNING (Trap?) ⚠️" or _final_verdict == "CLIMAX / REJECT ⚠️"
+        c_sig_txt := "FAKE SIGNAL? ⚠️"
+        c_sig_col := c_orange
+
+// --- PREPARE DISPLAY VARIABLES ---
+string _txt_st = _cur_bull_s ? "BULLISH" : "BEARISH"
+color _col_st = _cur_bull_s ? c_up_fix : c_dn_fix
+string _txt_mt = _cur_bull_m ? "BULLISH" : "BEARISH"
+color _col_mt = _cur_bull_m ? c_up_fix : c_dn_fix
+string _txt_lt = _cur_bull_l ? "BULLISH" : "BEARISH"
+color _col_lt = _cur_bull_l ? c_up_fix : c_dn_fix
+
+// --- TABLE DRAWING ---
+var table t_panel = table.new(position.middle_right, 2, 35, bgcolor=color.new(#000000, 40), frame_color=na, frame_width=0, border_width=0)
+
+if barstate.islast and show_panel
+    string _vol_txt = str.tostring(_cur_rvol, "#.##") + "x"
+    color _vol_col_disp = _vol_boom ? c_magenta : (_vol_low ? c_gray_fix : c_up_fix)
+    
+    color _chg_c = c_chg >= 0 ? c_up_fix : c_dn_fix
+    string _chg_s = (c_chg >= 0 ? "+" : "") + str.tostring(c_chg, "#.2") + "%"
+
+    table.merge_cells(t_panel, 0, 0, 1, 0)
+    string _header_title = " MAX V7.30 INFO HUD "
+    if is_s1 or is_s2 or is_s3
+        _header_title := " MAX V7.30 (PORTFOLIO)"
+    
+    table.cell(t_panel, 0, 0, _header_title, text_color=color.white, bgcolor=#2962FF, text_size=txt_size_left)
+    table.merge_cells(t_panel, 0, 1, 1, 1)
+    
+    table.cell(t_panel, 0, 1, c_sig_txt, text_color=color.white, bgcolor=c_sig_col, text_size=txt_size_left)
+
+    // [MODIFIED] text_color=color.white (Label Column)
+    table.cell(t_panel, 0, 2, "Change", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 2, _chg_s, text_color=_chg_c, text_size=txt_size_left, text_halign=text.align_right)
+
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 3, "Trend Short", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 3, _txt_st, text_color=_col_st, text_size=txt_size_left, text_halign=text.align_right)
+
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 4, "Trend Medium", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 4, _txt_mt, text_color=_col_mt, text_size=txt_size_left, text_halign=text.align_right)
+
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 5, "Trend Long", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 5, _txt_lt, text_color=_col_lt, text_size=txt_size_left, text_halign=text.align_right)
+
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 6, "Structure", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 6, c_stat_txt, text_color=c_stat_col, text_size=txt_size_left, text_halign=text.align_right)
+
+    // --- REORDERED SECTION: VOLUME BLOCK ---
+    
+    // [ROW 7] VOL POWER (RVOL)
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 7, "Vol Power", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    string _vol_info = _vol_txt
+    if _vpa_churning
+        _vol_info := _vol_txt + " (Churn)"
+    else if _vpa_valid
+        _vol_info := _vol_txt + " (Valid)"
+    table.cell(t_panel, 1, 7, _vol_info, text_color=_vol_col_disp, text_size=txt_size_left, text_halign=text.align_right)
+    
+    // [ROW 8] X-RAY POWER
+    string _xray_txt = "OFF / N/A"
+    color _xray_col = c_gray_fix
+    
+    if use_xray and x_vol_total > 0
+        float _buy_pct = (x_buy_total / x_vol_total) * 100
+        float _sell_pct = (x_sell_total / x_vol_total) * 100
+        _xray_txt := "B:" + str.tostring(_buy_pct, "#") + "%  S:" + str.tostring(_sell_pct, "#") + "%"
+        if _buy_pct > 55
+            _xray_col := #00E5FF 
+        else if _sell_pct > 55
+            _xray_col := #D500F9 
+        else
+            _xray_col := color.white 
+
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 8, "X-Ray Power", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 8, _xray_txt, text_color=_xray_col, text_size=txt_size_left, text_halign=text.align_right)
+
+    // [ROW 9] RISEN VOL REGIME
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 9, "Vol Regime", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 9, r_regime, text_color=r_regimeCol, text_size=txt_size_left, text_halign=text.align_right)
+
+    // [ROW 10] ALPHA STATUS
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 10, "Alpha Status", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 10, alpha_txt, text_color=alpha_col, text_size=txt_size_left, text_halign=text.align_right)
+
+    // [ROW 11] QUADRANT (RRG) STATUS
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 11, "Quadrant", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 11, quad_txt, text_color=quad_col, text_size=txt_size_left, text_halign=text.align_right)
+
+    // --- STRATEGY ALLOCATION LOGIC ---
+    var float p_b1 = 0.0
+    var float p_b2 = 0.0
+    var float p_b3 = 0.0
+    var float p_b4 = 0.0
+
+    if use_strat == "Full Grid (1-2-3-4)"
+        p_b1 := 0.10, p_b2 := 0.20, p_b3 := 0.30, p_b4 := 0.40
+    else if use_strat == "Extreme Dip (3-4)"
+        p_b1 := 0.0, p_b2 := 0.0, p_b3 := 0.40, p_b4 := 0.60
+    else if use_strat == "Sweet Spot (2-3)"
+        p_b1 := 0.0, p_b2 := 0.40, p_b3 := 0.60, p_b4 := 0.0
+    else if use_strat == "Mid-Reversal (2-4)"
+        p_b1 := 0.0, p_b2 := 0.35, p_b3 := 0.0, p_b4 := 0.65
+    else if use_strat == "Deep Value (1-3-4)"
+        p_b1 := 0.15, p_b2 := 0.0, p_b3 := 0.35, p_b4 := 0.50
+    else if use_strat == "The Gap (1-2-4)"
+        p_b1 := 0.15, p_b2 := 0.25, p_b3 := 0.0, p_b4 := 0.60
+    else if use_strat == "Sniper (1-3)"
+        p_b1 := 0.30, p_b2 := 0.0, p_b3 := 0.70, p_b4 := 0.0
+    else if use_strat == "Aggressive (1-2)"
+        p_b1 := 0.40, p_b2 := 0.60, p_b3 := 0.0, p_b4 := 0.0
+
+    // 1. HITUNG POTENTIAL LOT
+    float _alloc_1 = use_equity * p_b1
+    float _alloc_2 = use_equity * p_b2
+    float _alloc_3 = use_equity * p_b3
+    float _alloc_4 = use_equity * p_b4
+    
+    int _l1 = not na(mem_e1) and mem_e1 > 0 ? math.floor(_alloc_1 / (mem_e1 * 100)) : 0
+    int _l2 = not na(mem_e2) and mem_e2 > 0 ? math.floor(_alloc_2 / (mem_e2 * 100)) : 0
+    int _l3 = not na(mem_e3) and mem_e3 > 0 ? math.floor(_alloc_3 / (mem_e3 * 100)) : 0
+    int _l4 = not na(mem_e4) and mem_e4 > 0 ? math.floor(_alloc_4 / (mem_e4 * 100)) : 0
+
+    string _t_e1 = not na(mem_e1) ? str.tostring(mem_e1, "#") : "-"
+    string _t_e2 = not na(mem_e2) ? str.tostring(mem_e2, "#") : "-"
+    string _t_e3 = not na(mem_e3) ? str.tostring(mem_e3, "#") : "-"
+    string _t_e4 = not na(mem_e4) ? str.tostring(mem_e4, "#") : "-"
+
+    // 2. HITUNG ACTUAL ACTIVE LOT (REALITY CHECK)
+    float _total_val_new = 0.0
+    int _total_lot_new = 0
+    
+    int _active_l1 = u_b1 ? _l1 : 0
+    int _active_l2 = u_b2 ? _l2 : 0
+    int _active_l3 = u_b3 ? _l3 : 0
+    int _active_l4 = u_b4 ? _l4 : 0
+    
+    float _fee_mult = 1.0 + (use_fee / 100.0)
+
+    if _active_l1 > 0
+        _total_val_new += (mem_e1 * _active_l1 * 100 * _fee_mult)
+        _total_lot_new += _active_l1
+    if _active_l2 > 0
+        _total_val_new += (mem_e2 * _active_l2 * 100 * _fee_mult)
+        _total_lot_new += _active_l2
+    if _active_l3 > 0
+        _total_val_new += (mem_e3 * _active_l3 * 100 * _fee_mult)
+        _total_lot_new += _active_l3
+    if _active_l4 > 0
+        _total_val_new += (mem_e4 * _active_l4 * 100 * _fee_mult)
+        _total_lot_new += _active_l4
+
+    // --- LOGIC AVG UP / BLENDED PRICE ---
+    float _avg_entry = na
+    int _final_total_lot = 0
+    bool has_legacy = (u_lot_hold > 0 and u_avg_hold > 0)
+    
+    if has_legacy
+        float _val_old = u_avg_hold * u_lot_hold * 100
+        float _val_combined = _val_old + _total_val_new
+        _final_total_lot := u_lot_hold + _total_lot_new
+        _avg_entry := _final_total_lot > 0 ? (_val_combined / (_final_total_lot * 100)) : na
+    else
+        _final_total_lot := _total_lot_new
+        _avg_entry := _total_lot_new > 0 ? (_total_val_new / (_total_lot_new * 100)) : na
+
+    string _avg_txt = not na(_avg_entry) ? str.tostring(_avg_entry, "#") : "-"
+    if not na(_avg_entry)
+        var line avg_line_visual = na
+        var label avg_lbl_visual = na
+        line.delete(avg_line_visual)
+        label.delete(avg_lbl_visual)
+        
+        float _pnl_pct = ((close - _avg_entry) / _avg_entry) * 100
+        string _sign = _pnl_pct >= 0 ? "+" : ""
+        string _pnl_txt = "(" + _sign + str.tostring(_pnl_pct, "#.2") + "%)"
+        color _dynamic_col = _pnl_pct >= 0 ? #00E676 : #FF1744
+        string _final_label = "MY AVG: " + str.tostring(_avg_entry, "#") + " " + _pnl_txt
+        
+        avg_line_visual := line.new(bar_index, _avg_entry, bar_index + 12, _avg_entry, color=_dynamic_col, width=2, style=line.style_dashed)
+        avg_lbl_visual := label.new(bar_index + 12, _avg_entry, text=_final_label, color=color.new(_dynamic_col, 20), textcolor=color.white, style=label.style_label_left, size=size.small)
+    
+    // --- LIVE TRADE MATH (REVISED STATUS) ---
+    float _ref_price = not na(_avg_entry) ? _avg_entry : close
+    bool _is_sl_hit = not na(mem_sl) and close < mem_sl 
+    if not na(mem_trail_sl) and close < mem_trail_sl
+        _is_sl_hit := true
+
+    bool _is_tp_hit = not na(mem_tp2) and close > mem_tp2
+    
+    float _curr_sl_dist = not na(mem_sl) ? (_ref_price - mem_sl) / _ref_price * 100 : 0.0
+    float _curr_tp2_dist = not na(mem_tp2) ? (mem_tp2 - _ref_price) / _ref_price * 100 : 0.0
+    float _curr_rrr = (_curr_sl_dist > 0) ? _curr_tp2_dist / _curr_sl_dist : 0.0
+    
+    string _txt_sl_row = "-"
+    color _col_sl_row = c_gray_fix
+
+    if _is_sl_hit
+        if not na(mem_trail_sl) and mem_trail_sl > mem_e1
+            _txt_sl_row := "💰 LOCKER HIT"
+            _col_sl_row := c_lime
+        else if not na(mem_trail_sl) and mem_trail_sl == mem_e1
+            _txt_sl_row := "🛡️ BEP HIT"
+            _col_sl_row := c_gray_fix
+        else
+            _txt_sl_row := "⛔ STOPPED OUT"
+            _col_sl_row := c_dn_fix
+    else
+        if is_be_active
+            if not na(mem_trail_sl) and mem_trail_sl > mem_e1
+                _txt_sl_row := "🔒 LOCKING (" + str.tostring(((mem_trail_sl - mem_e1)/mem_e1)*100, "#.1") + "%)"
+                _col_sl_row := c_cyan_fix
+            else
+                _txt_sl_row := "🛡️ RISK FREE"
+                _col_sl_row := c_gray_fix
+        else
+            _txt_sl_row := "-" + str.tostring(math.abs(_curr_sl_dist), "#.2") + "%"
+            _col_sl_row := (_curr_sl_dist < 5 ? c_lime : c_dn_fix)
+    
+    string _txt_tp_row = _is_tp_hit ? "✅ TP MAX HIT" : "+" + str.tostring(_curr_tp2_dist, "#.2") + "%"
+    color _col_tp_row = _is_tp_hit ? c_cyan_fix : c_up_fix
+    
+    // --- LIVE TRADE MATH HEADER ---
+    table.merge_cells(t_panel, 0, 12, 1, 12)
+    table.cell(t_panel, 0, 12, "LIVE TRADE MATH", text_color=c_cyan_fix, bgcolor=color.new(c_black_fix, 20), text_size=txt_size_left)
+    
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 13, "Strategy:", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 13, use_strat, text_color=c_gold_fix, text_size=txt_size_left, text_halign=text.align_right)
+
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 14, "Risk (Dist) %:", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 14, _txt_sl_row, text_color=_col_sl_row, text_size=txt_size_left, text_halign=text.align_right)
+    
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 15, "Pot. Upside:", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 15, _txt_tp_row, text_color=_col_tp_row, text_size=txt_size_left, text_halign=text.align_right)
+
+    // [MODIFIED] text_color=color.white
+    table.cell(t_panel, 0, 16, "Reward/Risk:", text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    string _rrr_display = _is_sl_hit ? "INVALID" : str.tostring(_curr_rrr, "#.2") + "R"
+    table.cell(t_panel, 1, 16, _rrr_display, text_color=(_curr_rrr > 2 and not _is_sl_hit ? c_lime : c_orange), text_size=txt_size_left, text_halign=text.align_right)
+
+    // --- PLAN HEADER ---
+    table.cell(t_panel, 0, 18, "— PLAN —", text_color=c_gray_fix, text_size=txt_size_left, text_halign=text.align_center)
+    table.cell(t_panel, 1, 18, "— LOTS (IDR) —", text_color=c_gray_fix, text_size=txt_size_left, text_halign=text.align_center)
+    
+    string _lbl_b1 = use_manual ? "BUY 1 (Man)" : "BUY 1 (Mkt)"
+    
+    color c_l1 = p_b1 > 0 ? (u_b1 ? c_white_fix : c_gray_fix) : color.new(c_gray_fix, 70)
+    color c_l2 = p_b2 > 0 ? (u_b2 ? c_white_fix : c_gray_fix) : color.new(c_gray_fix, 70)
+    color c_l3 = p_b3 > 0 ? (u_b3 ? c_white_fix : c_gray_fix) : color.new(c_gray_fix, 70)
+    color c_l4 = p_b4 > 0 ? (u_b4 ? c_white_fix : c_gray_fix) : color.new(c_gray_fix, 70)
+    
+    string _t1_lot_display = p_b1 > 0 ? (u_b1 ? str.tostring(_l1)+"L" : "(" + str.tostring(_l1) + "L)") : "-"
+    string _t2_lot_display = p_b2 > 0 ? (u_b2 ? str.tostring(_l2)+"L" : "(" + str.tostring(_l2) + "L)") : "-"
+    string _t3_lot_display = p_b3 > 0 ? (u_b3 ? str.tostring(_l3)+"L" : "(" + str.tostring(_l3) + "L)") : "-"
+    string _t4_lot_display = p_b4 > 0 ? (u_b4 ? str.tostring(_l4)+"L" : "(" + str.tostring(_l4) + "L)") : "-"
+
+    // [BUY LEVELS]
+    table.cell(t_panel, 0, 20, _lbl_b1, text_color=p_b1 > 0 ? c_up_fix : c_gray_fix, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 20, _t_e1 + " " + _t1_lot_display, text_color=c_l1, text_size=txt_size_left, text_halign=text.align_right)
+    
+    table.cell(t_panel, 0, 21, "BUY 2 (50%)", text_color=p_b2 > 0 ? c_up_fix : c_gray_fix, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 21, _t_e2 + " " + _t2_lot_display, text_color=c_l2, text_size=txt_size_left, text_halign=text.align_right)
+
+    table.cell(t_panel, 0, 22, "BUY 3 (61.8%)", text_color=p_b3 > 0 ? c_up_fix : c_gray_fix, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 22, _t_e3 + " " + _t3_lot_display, text_color=c_l3, text_size=txt_size_left, text_halign=text.align_right)
+
+    table.cell(t_panel, 0, 23, "BUY 4 (78.6%)", text_color=p_b4 > 0 ? c_orange : c_gray_fix, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 23, _t_e4 + " " + _t4_lot_display, text_color=c_l4, text_size=txt_size_left, text_halign=text.align_right)
+
+    // [STOP LOSS]
+    string _sl_price_txt = is_be_active ? str.tostring(mem_e1, "#") + " (BE)" : (not na(mem_sl) ? str.tostring(mem_sl, "#") : "-")
+    color _sl_row_col_dyn = is_be_active ? color.gray : c_dn_fix
+
+    table.cell(t_panel, 0, 24, "STOP LOSS", text_color=_sl_row_col_dyn, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 24, _sl_price_txt, text_color=_sl_row_col_dyn, text_size=txt_size_left, text_halign=text.align_right)
+    
+    // [AVERAGE PRICE]
+    string _lbl_avg = has_legacy ? "BLENDED AVG" : "AVG PRICE"
+    color _bg_avg    = has_legacy ? c_magenta : color.new(c_beta, 80)
+    
+    table.cell(t_panel, 0, 25, _lbl_avg, text_color=c_cyan_fix, text_size=txt_size_left, text_halign=text.align_left, bgcolor=_bg_avg)
+    string _disp_avg = _avg_txt + (has_legacy ? " (" + str.tostring(_final_total_lot) + "L)" : "")
+    table.cell(t_panel, 1, 25, _disp_avg, text_color=color.white, text_size=txt_size_left, text_halign=text.align_right, bgcolor=_bg_avg)
+
+    string _t_tp1 = not na(mem_tp1) ? str.tostring(mem_tp1, "#") : "-"
+    string _t_tp2 = not na(mem_tp2) ? str.tostring(mem_tp2, "#") : "-"
+    
+    string _txt_tp1 = "TP1: " + _t_tp1 + " (" + str.tostring(mem_tp1_t) + "x)"
+    color _col_tp1 = mem_tp1_t > 2 ? c_up_fix : c_gold_fix
+    
+    // [TP 1]
+    table.cell(t_panel, 0, 28, _txt_tp1, text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 28, mem_tp1_s, text_color=_col_tp1, text_size=txt_size_left, text_halign=text.align_right)
+
+    // [TP 2]
+    string _txt_tp2 = mem_tp2_desc_str + ": " + _t_tp2 + " (" + str.tostring(mem_tp2_t) + "x)"
+    color _col_tp2 = mem_tp2_t > 2 ? c_up_fix : c_gold_fix
+    table.cell(t_panel, 0, 29, _txt_tp2, text_color=color.white, text_size=txt_size_left, text_halign=text.align_left)
+    table.cell(t_panel, 1, 29, mem_tp2_s, text_color=_col_tp2, text_size=txt_size_left, text_halign=text.align_right)
+    
+// ==========================================
+// 10. LEFT ANALYST HUD (UPGRADED: QUANT VERDICT)
+// ==========================================
+
+if barstate.islast and show_left_hud
+    // --- 1. DATA PREPARATION ---
+    string _regime_txt = _vol_ratio > 1.2 ? "TURBULENT ⚠️" : (_vol_ratio < 0.8 ? "CALM (Stable)" : "NORMAL")
+    color _regime_col = _vol_ratio > 1.2 ? c_orange : (_vol_ratio < 0.8 ? c_lime : c_gray_fix)
+    
+    string _dd_txt = str.tostring(_dd_pct, "#.1") + "%"
+    color _dd_col = _dd_pct < -20 ? c_lime : (_dd_pct > -5 ? c_orange : c_gray_fix)
+
+    string _beta_txt = _beta_final > 1.2 ? "High Beta" : (_beta_final < 0.8 ? "Low Beta" : "Parity")
+    color _beta_col = _beta_final > 1.2 ? c_magenta : (_beta_final < 0.8 ? c_lime : c_gray_fix)
+
+    string _ir_txt = _ir_final > 1.0 ? "EXCEPTIONAL" : (_ir_final > 0.5 ? "GOOD" : "POOR")
+    color _ir_col = _ir_final > 0.5 ? c_cyan_fix : c_gray_fix
+
+    // --- 2. QUANT SCORING ENGINE (The Logic) ---
+    // Logika ini menilai "KUALITAS" saham dibanding Benchmark (IHSG)
+    
+    float _q_score = 0.0
+    
+    // A. ALPHA (Kinerja vs IHSG) - Bobot Terbesar
+    if q_alpha > 10.0
+        _q_score += 40  // Alpha Superstar
+    else if q_alpha > 0.0
+        _q_score += 20  // Mengalahkan Pasar
+    else if q_alpha < -5.0
+        _q_score -= 30  // Kalah Telak dari Pasar (Underperformer)
+    else
+        _q_score -= 10  // Sedikit di bawah pasar
+
+    // B. INFO RATIO (Skill Konsistensi)
+    if _ir_final > 0.5
+        _q_score += 20  // Konsisten Profit
+    else if _ir_final > 0
+        _q_score += 10
+    else
+        _q_score -= 10  // Return tidak sebanding risiko
+
+    // C. Z-SCORE (Valuasi Statistik)
+    // Z-Score rendah (-2) bagus untuk buy (oversold), Tinggi (+2) bahaya (overbought)
+    if _z_score_final < -2.0
+        _q_score += 15  // Diskon Statistik (Cheap)
+    else if _z_score_final > 2.0
+        _q_score -= 15  // Mahal Statistik (Expensive)
+
+    // D. BETA (Faktor Risiko)
+    if _beta_final > 2.0
+        _q_score -= 10  // Terlalu Volatile/Gorengan
+        
+    // --- 3. DETERMINE VERDICT TEXT ---
+    string _concl = "NEUTRAL"
+    color _concl_col = c_gray_fix
+
+    // Kategori 1: SANGAT BAGUS (Alpha Tinggi + IR Bagus)
+    if _q_score >= 40
+        _concl := "💎 TOP PERFORMER"
+        _concl_col := c_cyan_fix
+    
+    // Kategori 2: BAGUS
+    else if _q_score >= 10
+        _concl := "OUTPERFORMER"
+        _concl_col := c_up_fix
+        
+    // Kategori 3: VALUE PLAY (Alpha jelek tapi Statistik Murah/Deep Value)
+    else if _dd_pct < -20 and _z_score_final < -1.5
+        _concl := "DEEP VALUE / OVERSOLD"
+        _concl_col := c_lime
+        
+    // Kategori 4: BURUK (Alpha Minus)
+    else if _q_score < -10
+        // Cek seberapa parah
+        if q_alpha < -10
+            _concl := "TOXIC / LAGGARD" // Alpha hancur
+            _concl_col := c_dn_fix
+        else
+            _concl := "UNDERPERFORMER"
+            _concl_col := c_orange
+    else
+        _concl := "MARKET PERFORMER" // Bergerak sama dengan IHSG
+        _concl_col := c_gray_fix
+
+    // Override: Jika High Risk (Beta > 2.5)
+    if _beta_final > 2.5
+        _concl := "HIGH RISK SPECULATION"
+        _concl_col := c_magenta
+
+    // --- 4. DRAW TABLE ---
+    var table t_left = table.new(left_hud_pos, 2, 9, bgcolor=color.new(c_black_fix, 20), frame_color=c_gray_fix, frame_width=1, border_width=1)
+    table.merge_cells(t_left, 0, 0, 1, 0)
+    table.cell(t_left, 0, 0, "🧬 QUANT ANALYST (V7.3)", text_color=color.white, bgcolor=#2962FF, text_size=left_txt_size, text_halign=text.align_center)
+    
+    table.cell(t_left, 0, 1, "Info Ratio (Skill):", text_color=c_gray_fix, text_size=left_txt_size, text_halign=text.align_left)
+    table.cell(t_left, 1, 1, str.tostring(_ir_final, "#.2"), text_color=_ir_col, text_size=left_txt_size, text_halign=text.align_right)
+
+    table.cell(t_left, 0, 2, "Beta (Sensitivity):", text_color=c_gray_fix, text_size=left_txt_size, text_halign=text.align_left)
+    table.cell(t_left, 1, 2, str.tostring(_beta_final, "#.2") + " (" + _beta_txt + ")", text_color=_beta_col, text_size=left_txt_size, text_halign=text.align_right)
+
+    table.cell(t_left, 0, 3, "Vol. Regime:", text_color=c_gray_fix, text_size=left_txt_size, text_halign=text.align_left)
+    table.cell(t_left, 1, 3, _regime_txt, text_color=_regime_col, text_size=left_txt_size, text_halign=text.align_right)
+    
+    table.cell(t_left, 0, 4, "DD from Peak:", text_color=c_gray_fix, text_size=left_txt_size, text_halign=text.align_left)
+    table.cell(t_left, 1, 4, _dd_txt, text_color=_dd_col, text_size=left_txt_size, text_halign=text.align_right)
+    
+    table.cell(t_left, 0, 5, "Ann. Alpha:", text_color=c_gray_fix, text_size=left_txt_size, text_halign=text.align_left)
+    table.cell(t_left, 1, 5, str.tostring(q_alpha, "#.1") + "%", text_color=(q_alpha > 0 ? c_up_fix : c_dn_fix), text_size=left_txt_size, text_halign=text.align_right)
+    
+    table.cell(t_left, 0, 6, "Z-Score (Dev):", text_color=c_gray_fix, text_size=left_txt_size, text_halign=text.align_left)
+    table.cell(t_left, 1, 6, str.tostring(_z_score_final, "#.2"), text_color=math.abs(_z_score_final)>2 ? c_orange : c_gray_fix, text_size=left_txt_size, text_halign=text.align_right)
+    
+    table.merge_cells(t_left, 0, 7, 1, 7)
+    table.cell(t_left, 0, 7, "🧠 ANALYST VERDICT", text_color=c_gold_fix, bgcolor=color.new(c_black_fix, 10), text_size=left_txt_size, text_halign=text.align_center)
+    
+    table.merge_cells(t_left, 0, 8, 1, 8)
+    // VERDICT HASIL SCORING QUANT
+    table.cell(t_left, 0, 8, _concl, text_color=_concl_col, bgcolor=color.new(c_black_fix, 10), text_size=left_txt_size, text_halign=text.align_center)
+
+// ==========================================
+// 11. FUTURE PROJECTION ENGINE (GHOST CANDLE)
+// ==========================================
+// Fitur ini menggambar "Skenario Paling Mungkin" untuk candle BESOK
+// Berdasarkan Kesimpulan Matriks V5 & Volatilitas (ATR)
+
+// --- 1. CONFIGURATION ---
+bool show_projection = input.bool(true, "Tampilkan Proyeksi Candle Besok?", group="🔮 Future Projection")
+float _proj_atr = ta.atr(14) // Menggunakan ATR sebagai ukuran range wajar
+
+// --- 2. LOGIC PROYEKSI (Berdasarkan Verdict V5) ---
+// Kita tentukan arah (Bull/Bear) dan Power (Size) berdasarkan kesimpulan Section 9
+
+float _p_open  = close
+float _p_close = close
+float _p_high  = high
+float _p_low   = low
+color _p_col   = color.gray
+string _p_txt  = ""
+
+if show_projection and barstate.islast
+    // CASE A: STRONG BULLISH (Ignition, Power Trend, Reversal)
+    if _final_verdict == "IGNITION BREAKOUT 🚀" or _final_verdict == "BULLISH REVERSAL 🔥" or _final_verdict == "STRONG BULL (Prime)" or _final_verdict == "POWER TREND 🔥"
+        // Skenario: Lanjut Naik Agresif (1.2x ATR)
+        _p_close := _p_open + (_proj_atr * 1.2)
+        _p_high  := _p_close + (_proj_atr * 0.2)
+        _p_low   := _p_open - (_proj_atr * 0.1)
+        _p_col   := color.new(c_cyan_fix, 50)
+        _p_txt   := "TARGET"
+
+    // CASE B: MODERATE BULLISH (Steady, Accumulation)
+    else if _final_verdict == "STEADY UPTREND" or _final_verdict == "SMART ACCUMULATION" or _final_verdict == "CONSTRUCTIVE (Setup)"
+        // Skenario: Naik Santai (0.8x ATR)
+        _p_close := _p_open + (_proj_atr * 0.7)
+        _p_high  := _p_close + (_proj_atr * 0.1)
+        _p_low   := _p_open - (_proj_atr * 0.1)
+        _p_col   := color.new(c_up_fix, 50)
+        _p_txt   := "CONT."
+
+    // CASE C: REBOUND DARI PULLBACK (Golden Pullback, Perfect Dip)
+    else if _final_verdict == "GOLDEN PULLBACK" or _final_verdict == "PERFECT DIP (Buy) ⭐"
+        // Skenario: Rebound Hijau (Open di bawah, Close di atas)
+        _p_open  := close // Anggap open besok flat
+        _p_close := close + (_proj_atr * 0.8) // Rebound naik
+        _p_high  := _p_close + (_proj_atr * 0.1)
+        _p_low   := close - (_proj_atr * 0.2) // Sempat turun dikit (ekor)
+        _p_col   := color.new(c_lime, 50)
+        _p_txt   := "REBOUND"
+
+    // CASE D: BEARISH / TRAP (Churning, Climax, Distribution)
+    else if _final_verdict == "CHURNING (Trap?) ⚠️" or _final_verdict == "CLIMAX / REJECT ⚠️" or _final_verdict == "DISTRIBUTION ⚠️" or _final_verdict == "BEARISH / AVOID"
+        // Skenario: Drop Merah (-1.0x ATR)
+        _p_close := _p_open - (_proj_atr * 1.0)
+        _p_high  := _p_open + (_proj_atr * 0.1) // Sempat naik nipu
+        _p_low   := _p_close - (_proj_atr * 0.1)
+        _p_col   := color.new(c_dn_fix, 50)
+        _p_txt   := "DUMP"
+
+    // CASE E: NEUTRAL / SIDEWAYS
+    else
+        // Skenario: Doji / Kecil
+        _p_close := _p_open + (_proj_atr * 0.1) // Hampir flat
+        _p_high  := _p_open + (_proj_atr * 0.3)
+        _p_low   := _p_open - (_proj_atr * 0.3)
+        _p_col   := color.new(color.gray, 50)
+        _p_txt   := "~"
+
+    // --- 3. DRAWING THE GHOST CANDLE ---
+    // Hapus gambar lama agar tidak menumpuk
+    var line p_wick = na
+    var box p_body = na
+    var label p_lbl = na
+    line.delete(p_wick), box.delete(p_body), label.delete(p_lbl)
+
+    // Koordinat Waktu (Besok)
+    int _t_now = time
+    int _t_next = time + (time - time[1]) // Estimasi waktu bar berikutnya
+
+    // Gambar Wick (Ekor)
+    p_wick := line.new(x1=_t_next, y1=_p_high, x2=_t_next, y2=_p_low, xloc=xloc.bar_time, color=_p_col, width=1)
+    
+    // Gambar Body (Badan)
+    p_body := box.new(left=_t_next - (time - time[1])/4, top=math.max(_p_open, _p_close), right=_t_next + (time - time[1])/4, bottom=math.min(_p_open, _p_close), xloc=xloc.bar_time, border_color=_p_col, bgcolor=_p_col)
+    
+    // Label
+    p_lbl := label.new(x=_t_next, y=_p_high, text=_p_txt, xloc=xloc.bar_time, yloc=yloc.price, color=color.new(color.black, 100), style=label.style_label_down, textcolor=_p_col, size=size.tiny)
+
+
+alertcondition(c_sig_combo, title="SNIPER ALERT", message="Sniper Demand Detected on {{ticker}}! Price: {{close}}")
+alertcondition(c_sig_beta, title="BETA BREAKOUT", message="Beta Momentum Signal on {{ticker}}! Premium Zone Entry.")
+alertcondition(c_sig_vshape, title="V-SHAPE ALERT", message="V-Shape Reversal Detected on {{ticker}}! Price: {{close}}")
+alertcondition(c_sig_early, title="EARLY SWEEP ALERT", message="Liquidity Sweep + Valid Candle on {{ticker}}! Early Entry.")
+alertcondition(c_sig_gamma, title="GAMMA ALERT", message="Gamma Pump Signal on {{ticker}}. Momentum Strong.")

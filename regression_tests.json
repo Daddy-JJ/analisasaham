@@ -1,0 +1,396 @@
+[
+  {
+    "id": "T01",
+    "prompt": "hai",
+    "expected_tools": [],
+    "assertions": [
+      "Menampilkan 4 jalur UX",
+      "Tidak mengambil EOD",
+      "Tidak menjalankan code execution"
+    ]
+  },
+  {
+    "id": "T02",
+    "prompt": "hai saya ingin analisa saham cbre",
+    "expected_tools": [
+      {
+        "name": "getEodHistory",
+        "args_contains": {
+          "ticker": "CBRE",
+          "format": "file_url"
+        }
+      }
+    ],
+    "assertions": [
+      "Tidak menanyakan ticker ulang"
+    ]
+  },
+  {
+    "id": "T03",
+    "prompt": "BBCA fase 1 step auto mendalam konservatif",
+    "expected_tools": [
+      {
+        "name": "getEodHistory",
+        "args_contains": {
+          "ticker": "BBCA",
+          "format": "file_url"
+        }
+      }
+    ],
+    "state_assertions": {
+      "active_ticker": "BBCA",
+      "active_phase": 1,
+      "active_mode": "STEP",
+      "active_style": "mendalam",
+      "active_risk_profile": "konservatif"
+    }
+  },
+  {
+    "id": "T04",
+    "precondition": "State dari T03",
+    "prompt": "lanjut fase 2",
+    "expected_tools": [],
+    "assertions": [
+      "Menggunakan BBCA dari state",
+      "Tidak menanyakan ticker/fase sebelumnya",
+      "Menggunakan hasil Fase 1 sebagai anchor"
+    ]
+  },
+  {
+    "id": "T05",
+    "prompt": "analisa IHSG fase 1",
+    "expected_tools": [
+      {
+        "name": "getIhsgHistory",
+        "args_contains": {
+          "format": "file_url"
+        }
+      }
+    ],
+    "assertions": [
+      "IHSG hanya menawarkan Fase 1-2"
+    ]
+  },
+  {
+    "id": "T06",
+    "prompt": "IHSG lanjut fase 3",
+    "precondition": "State IHSG fase 2 selesai",
+    "expected_tools": [],
+    "assertions": [
+      "Tidak menjalankan Fase 3 saham",
+      "Menjelaskan workflow IHSG berhenti Fase 2"
+    ]
+  },
+  {
+    "id": "T07",
+    "prompt": "analisa maxscrener PGAS",
+    "expected_tools": [
+      {
+        "name": "getScreenerMaxResults",
+        "args_contains": {
+          "ticker": "PGAS",
+          "filter": "signals",
+          "sort": "score_desc",
+          "format": "json"
+        }
+      },
+      {
+        "name": "getEodHistory",
+        "args_contains": {
+          "ticker": "PGAS",
+          "format": "file_url"
+        }
+      }
+    ],
+    "assertions": [
+      "Output Deep Engine",
+      "Baca freshness dan risk/reward"
+    ]
+  },
+  {
+    "id": "T08",
+    "prompt": "maxscrener",
+    "expected_tools": [
+      {
+        "name": "getScreenerMaxResults",
+        "args_contains": {
+          "filter": "signals",
+          "sort": "score_desc",
+          "limit": 50,
+          "format": "json"
+        }
+      }
+    ],
+    "assertions": [
+      "Tidak mengarang kandidat di luar tool"
+    ]
+  },
+  {
+    "id": "T09",
+    "prompt": "bandarmologi PGAS 3 bulan terakhir mendalam",
+    "expected_tools": [
+      {
+        "name": "getBandarmologyTickerFactors"
+      },
+      {
+        "name": "getBroksumTickerInsight"
+      },
+      {
+        "name": "getBroksumSignal"
+      },
+      {
+        "name": "getBroksumTickerHistory"
+      },
+      {
+        "name": "getBroksumTickerBrokers"
+      },
+      {
+        "name": "getBroksumTickerAbsorption"
+      },
+      {
+        "name": "getEodHistory",
+        "args_contains": {
+          "ticker": "PGAS",
+          "format": "file_url"
+        }
+      }
+    ],
+    "assertions": [
+      "Menggunakan multi-layer Factor Stack",
+      "Tidak menyimpulkan dari satu broker"
+    ]
+  },
+  {
+    "id": "T10",
+    "prompt": "cek asing PGAS 1 bulan",
+    "expected_tools": [
+      {
+        "name": "getBandarmologyNetForeignFlow",
+        "args_contains": {
+          "ticker": "PGAS",
+          "period": "1m"
+        }
+      },
+      {
+        "name": "getBandarmologyNetForeignStreak"
+      },
+      {
+        "name": "getBandarmologyNetForeignMa"
+      },
+      {
+        "name": "getBandarmologyForeignFlowMa"
+      }
+    ],
+    "assertions": [
+      "Menyebut streak dan MA",
+      "Price confirmation bila diminta/diperlukan"
+    ]
+  },
+  {
+    "id": "T11",
+    "prompt": "cek Bandar Value PGAS vs MA20",
+    "expected_tools": [
+      {
+        "name": "getBandarmologyBandarValueMa",
+        "args_contains": {
+          "ticker": "PGAS",
+          "window": 20
+        }
+      },
+      {
+        "name": "getBandarmologyPreviousBandarValue",
+        "args_contains": {
+          "ticker": "PGAS"
+        }
+      }
+    ],
+    "assertions": [
+      "Tidak mengarang top broker jika belum diambil"
+    ]
+  },
+  {
+    "id": "T12",
+    "prompt": "cek absorption PGAS",
+    "expected_tools": [
+      {
+        "name": "getBroksumTickerAbsorption",
+        "args_contains": {
+          "ticker": "PGAS"
+        }
+      }
+    ],
+    "assertions": [
+      "Interpretasi absorption/churn diberi caveat price confirmation"
+    ]
+  },
+  {
+    "id": "T13",
+    "prompt": "top absorption market hari ini",
+    "expected_tools": [
+      {
+        "name": "getBroksumMarketPressure",
+        "args_contains": {
+          "mode": "absorption"
+        }
+      }
+    ],
+    "assertions": [
+      "Tanggal hasil disebut",
+      "Tidak membuat ranking sendiri di luar data"
+    ]
+  },
+  {
+    "id": "T14",
+    "prompt": "cek broker rotation PGAS minggu ini vs minggu lalu",
+    "expected_tools": [
+      {
+        "name": "getBroksumTickerRotation",
+        "args_contains": {
+          "ticker": "PGAS"
+        }
+      }
+    ],
+    "assertions": [
+      "Jika periode otomatis, recentDays/priorDays dapat digunakan",
+      "Normalized delta diprioritaskan jika panjang periode berbeda"
+    ]
+  },
+  {
+    "id": "T15",
+    "prompt": "top akumulasi bandar hari ini",
+    "expected_tools": [
+      {
+        "name": "getBroksumMarketRanking",
+        "args_contains": {
+          "side": "accumulation"
+        }
+      }
+    ],
+    "assertions": [
+      "Ada caveat ranking bukan jaminan outcome"
+    ]
+  },
+  {
+    "id": "T16",
+    "prompt": "broker AK akumulasi saham apa bulan ini",
+    "expected_tools": [
+      {
+        "name": "getBroksumBrokerHistory",
+        "args_contains": {
+          "broker": "AK"
+        }
+      }
+    ],
+    "assertions": [
+      "Range dibatasi bila scan market luas"
+    ]
+  },
+  {
+    "id": "T17",
+    "prompt": "bandingkan broksum PGAS Maret vs April",
+    "expected_tools": [
+      {
+        "name": "compareBroksumPeriods",
+        "args_contains": {
+          "ticker": "PGAS"
+        }
+      }
+    ],
+    "assertions": [
+      "Tidak memakai raw seluruh periode"
+    ]
+  },
+  {
+    "id": "T18",
+    "prompt": "raw broksum PGAS 2026-05-08 broker AK",
+    "expected_tools": [
+      {
+        "name": "getBroksumRaw",
+        "args_contains": {
+          "ticker": "PGAS",
+          "date": "2026-05-08",
+          "broker": "AK"
+        }
+      }
+    ],
+    "assertions": [
+      "Raw hanya tanggal/broker yang diminta"
+    ]
+  },
+  {
+    "id": "T19",
+    "prompt": "render fase 1",
+    "precondition": "State saham aktif + EOD tersedia",
+    "expected_tools": [],
+    "assertions": [
+      "Menampilkan klarifikasi render",
+      "Set pending_render_approval=true",
+      "Belum merender sebelum approval"
+    ]
+  },
+  {
+    "id": "T20",
+    "prompt": "setuju semua, tanpa image gen",
+    "precondition": "pending_render_approval=true",
+    "expected_tools": [],
+    "assertions": [
+      "Render memakai plotting/code execution, bukan image generation",
+      "Visual QA wajib",
+      "Reference hanya style/layout"
+    ]
+  },
+  {
+    "id": "T21",
+    "prompt": "Analisa BBCA",
+    "mock_failure": "getEodHistory format=file_url gagal",
+    "expected_behavior": [
+      "Coba getEodHistory format=csv",
+      "Jangan format=json",
+      "Jika csv gagal minta CSV user"
+    ]
+  },
+  {
+    "id": "T22",
+    "prompt": "MaxScreener ticker X dengan weight kosong tetapi strategy Sniper",
+    "expected_behavior": [
+      "Gunakan preset Sniper 30/0/70/0",
+      "Jangan membuat weight lain"
+    ]
+  },
+  {
+    "id": "T23",
+    "prompt": "MaxScreener ticker X weight kosong dan strategy kosong",
+    "expected_behavior": [
+      "Tulis bobot tidak tersedia",
+      "Jangan mengarang bobot"
+    ]
+  },
+  {
+    "id": "T24",
+    "prompt": "cek bandarmologi",
+    "precondition": "active_ticker=PGAS dari workflow sebelumnya",
+    "expected_behavior": [
+      "Gunakan PGAS dari state",
+      "Tidak tanya ticker ulang"
+    ]
+  },
+  {
+    "id": "T25",
+    "prompt": "Sekarang analisa TLKM fase 1",
+    "precondition": "active_ticker=PGAS",
+    "expected_behavior": [
+      "Reset ticker ke TLKM",
+      "Pertahankan hanya preference yang tidak bertentangan bila sesuai implementasi",
+      "Ambil EOD TLKM file_url"
+    ]
+  },
+  {
+    "id": "T26",
+    "prompt": "Kalau foreign net buy hari ini berarti pasti naik besok kan?",
+    "expected_behavior": [
+      "Tidak menyatakan kepastian",
+      "Jelaskan perlu Factor Stack dan price confirmation",
+      "Tidak mengarang flow jika tool belum dipanggil"
+    ]
+  }
+]

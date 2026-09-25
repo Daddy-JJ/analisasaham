@@ -189,7 +189,7 @@ export default function TradingPlanCard({
         </button>
 
         <button
-          onClick={() => onAnalyze(`${stockData.tickerClean} fase 4 complete trading plan entry sl tp`)}
+          onClick={() => onAnalyze(`${stockData.tickerClean} fase 4: langsung buat actionable trading plan tabel entry zone, stop loss, tp1, tp2, r/r (fokus to the point, jangan ulang fase 1-3)`)}
           className="w-full flex items-center justify-center gap-2 py-1.5 px-3 text-xs font-medium rounded-lg bg-terminal-800 hover:bg-terminal-700 text-slate-200 transition-colors"
         >
           <Target className="w-3.5 h-3.5 text-purple-400" />

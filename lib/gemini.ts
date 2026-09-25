@@ -29,7 +29,7 @@ export function getGeminiModel(modelName?: string) {
     generationConfig: {
       temperature: 0.2, // Low temperature for high analytical discipline and accuracy
       topP: 0.8,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
     },
   });
 }

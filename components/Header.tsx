@@ -121,7 +121,7 @@ export default function Header({
         </span>
 
         <button
-          onClick={() => onTriggerPhase(`${currentTicker} fase 1 step auto mendalam konservatif`)}
+          onClick={() => onTriggerPhase(`${currentTicker} fase 1: wave count & invalidation rules (fokus ringkas & to the point)`)}
           disabled={isLoading}
           className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-emerald-950/40 border border-emerald-800/50 hover:bg-emerald-900/50 text-emerald-300 transition-colors whitespace-nowrap disabled:opacity-50"
         >
@@ -130,7 +130,7 @@ export default function Header({
         </button>
 
         <button
-          onClick={() => onTriggerPhase(`${currentTicker} fase 2 fibonacci confluence targets`)}
+          onClick={() => onTriggerPhase(`${currentTicker} fase 2: fibonacci targets & confluence S/R (fokus ringkas & to the point)`)}
           disabled={isLoading}
           className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-cyan-950/40 border border-cyan-800/50 hover:bg-cyan-900/50 text-cyan-300 transition-colors whitespace-nowrap disabled:opacity-50"
         >
@@ -139,7 +139,7 @@ export default function Header({
         </button>
 
         <button
-          onClick={() => onTriggerPhase(`${currentTicker} fase 3 bandarmology factor stack price confirmation`)}
+          onClick={() => onTriggerPhase(`${currentTicker} fase 3: bandarmology & volume VPA confirmation (fokus ringkas & to the point)`)}
           disabled={isLoading}
           className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-amber-950/40 border border-amber-800/50 hover:bg-amber-900/50 text-amber-300 transition-colors whitespace-nowrap disabled:opacity-50"
         >
@@ -148,7 +148,7 @@ export default function Header({
         </button>
 
         <button
-          onClick={() => onTriggerPhase(`${currentTicker} fase 4 complete trading plan entry sl tp r/r`)}
+          onClick={() => onTriggerPhase(`${currentTicker} fase 4: langsung buat actionable trading plan tabel entry zone, stop loss, tp1, tp2, r/r (fokus to the point, jangan ulang fase 1-3)`)}
           disabled={isLoading}
           className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-purple-950/40 border border-purple-800/50 hover:bg-purple-900/50 text-purple-300 transition-colors whitespace-nowrap disabled:opacity-50"
         >

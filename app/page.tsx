@@ -5,7 +5,9 @@ import Header from '@/components/Header';
 import TradingPlanCard from '@/components/TradingPlanCard';
 import ChatInterface, { Message } from '@/components/ChatInterface';
 import BroksumModal from '@/components/BroksumModal';
+import TradingViewWidget from '@/components/TradingViewWidget';
 import { StockQuoteData } from '@/lib/yahoo-finance';
+import { MessageSquare, LineChart, Columns } from 'lucide-react';
 
 export default function Home() {
   const [currentTicker, setCurrentTicker] = useState('BBCA');
@@ -15,6 +17,7 @@ export default function Home() {
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [broksumText, setBroksumText] = useState('');
   const [isBroksumModalOpen, setIsBroksumModalOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'chat' | 'chart' | 'split'>('chat');
 
   // Fetch real-time market data whenever ticker changes
   const loadMarketData = useCallback(async (ticker: string) => {
@@ -48,6 +51,11 @@ export default function Home() {
 
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isLoadingChat) return;
+
+    // Switch view mode to chat or split if user is on chart-only mode so they see the AI response
+    if (viewMode === 'chart') {
+      setViewMode('split');
+    }
 
     const userMessageId = `user-${Date.now()}`;
     const assistantMessageId = `assistant-${Date.now()}`;
@@ -175,15 +183,86 @@ export default function Home() {
 
       {/* Main 1-Page Layout */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 grid grid-cols-1 lg:grid-cols-12 gap-4">
-        {/* Left Column: Chat Analysis (8 cols) */}
-        <section className="lg:col-span-8 flex flex-col">
-          <ChatInterface
-            messages={messages}
-            isLoading={isLoadingChat}
-            onSendMessage={handleSendMessage}
-            onClearChat={handleClearChat}
-            currentTicker={currentTicker}
-          />
+        {/* Left Column: Chat and/or TradingView Chart (8 cols) */}
+        <section className="lg:col-span-8 flex flex-col space-y-3">
+          {/* View Mode Switcher */}
+          <div className="flex items-center justify-between bg-terminal-900/60 p-1.5 rounded-lg border border-terminal-800">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setViewMode('chat')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  viewMode === 'chat'
+                    ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-950'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-terminal-850'
+                }`}
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>Analisa AI Pro</span>
+              </button>
+
+              <button
+                onClick={() => setViewMode('chart')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  viewMode === 'chart'
+                    ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-950'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-terminal-850'
+                }`}
+              >
+                <LineChart className="w-3.5 h-3.5 text-amber-400" />
+                <span>Chart TradingView</span>
+              </button>
+
+              <button
+                onClick={() => setViewMode('split')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  viewMode === 'split'
+                    ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-950'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-terminal-850'
+                }`}
+              >
+                <Columns className="w-3.5 h-3.5 text-purple-400" />
+                <span>Split View (Chat + Chart)</span>
+              </button>
+            </div>
+
+            <div className="text-[11px] font-mono text-slate-400 pr-2 hidden sm:block">
+              Simbol Chart: <span className="text-amber-400 font-bold">{currentTicker === 'IHSG' ? 'IDX:COMPOSITE' : `IDX:${currentTicker}`}</span>
+            </div>
+          </div>
+
+          {/* Conditional View Rendering */}
+          {viewMode === 'chat' && (
+            <ChatInterface
+              messages={messages}
+              isLoading={isLoadingChat}
+              onSendMessage={handleSendMessage}
+              onClearChat={handleClearChat}
+              currentTicker={currentTicker}
+            />
+          )}
+
+          {viewMode === 'chart' && (
+            <div className="h-[calc(100vh-190px)] min-h-[500px]">
+              <TradingViewWidget ticker={currentTicker} height="100%" />
+            </div>
+          )}
+
+          {viewMode === 'split' && (
+            <div className="flex flex-col space-y-3">
+              <div className="h-[360px]">
+                <TradingViewWidget ticker={currentTicker} height="100%" />
+              </div>
+              <div>
+                <ChatInterface
+                  messages={messages}
+                  isLoading={isLoadingChat}
+                  onSendMessage={handleSendMessage}
+                  onClearChat={handleClearChat}
+                  currentTicker={currentTicker}
+                />
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Right Column: Live Technicals & Trading Plan Snapshot (4 cols) */}
@@ -197,13 +276,13 @@ export default function Home() {
           {/* Quick Info Box */}
           <div className="bg-terminal-900/60 border border-terminal-800 rounded-xl p-4 text-xs text-slate-400 space-y-2">
             <h4 className="font-semibold text-slate-200 text-xs font-mono flex items-center gap-1.5">
-              <span>Panduan Aturan IDX Pro:</span>
+              <span>Fitur Interaktif TradingView:</span>
             </h4>
             <ul className="list-disc pl-4 space-y-1 text-[11px] text-slate-400">
-              <li><strong className="text-emerald-400">Fase 1:</strong> Wave count & invalidation (W2 tidak &gt;100% W1, W3 bukan terpendek).</li>
-              <li><strong className="text-cyan-400">Fase 2:</strong> Target Fibonacci (0.382, 0.5, 0.618, 0.786, Golden Ratio).</li>
-              <li><strong className="text-amber-400">Fase 3:</strong> 6-layer Bandarmology & Price-Volume confirmation.</li>
-              <li><strong className="text-purple-400">Fase 4:</strong> Entry Zone, Stop Loss terukur, Target 1 & 2.</li>
+              <li>Pilih timeframe lilin (*1D, 1W, 1M, 15m*).</li>
+              <li>Tersedia indikator bawaan (*RSI, MACD, Moving Averages, Volume*).</li>
+              <li>Alat gambar tren (*Trendline, Fibonacci Retracement, Elliott Wave drawing*).</li>
+              <li>Otomatis sinkron saat Anda mencari emiten baru.</li>
             </ul>
           </div>
         </aside>

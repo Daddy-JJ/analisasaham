@@ -8,6 +8,7 @@ interface HeaderProps {
   onSelectTicker: (ticker: string) => void;
   onTriggerPhase: (phaseText: string) => void;
   onOpenBroksumModal: () => void;
+  onOpenScreenerModal: () => void;
   hasBroksumData: boolean;
   isLoading: boolean;
 }
@@ -19,6 +20,7 @@ export default function Header({
   onSelectTicker,
   onTriggerPhase,
   onOpenBroksumModal,
+  onOpenScreenerModal,
   hasBroksumData,
   isLoading,
 }: HeaderProps) {
@@ -155,11 +157,12 @@ export default function Header({
         </button>
 
         <button
-          onClick={() => onTriggerPhase(`${currentTicker} analisa maxscreener maX trend momentum buy grid`)}
+          onClick={onOpenScreenerModal}
           disabled={isLoading}
-          className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-terminal-900 border border-terminal-700 hover:bg-terminal-800 text-slate-300 transition-colors whitespace-nowrap disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1 text-xs rounded-md bg-indigo-950/60 border border-indigo-700/60 hover:bg-indigo-900/60 text-indigo-300 font-semibold transition-colors whitespace-nowrap disabled:opacity-50 shadow-sm"
         >
-          <span>Screener MaX</span>
+          <Compass className="w-3.5 h-3.5 text-indigo-400" />
+          <span>Screener MaX (Kompas 100)</span>
         </button>
       </div>
     </header>

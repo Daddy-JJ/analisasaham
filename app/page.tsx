@@ -5,6 +5,7 @@ import Header from '@/components/Header';
 import TradingPlanCard from '@/components/TradingPlanCard';
 import ChatInterface, { Message } from '@/components/ChatInterface';
 import BroksumModal from '@/components/BroksumModal';
+import ScreenerModal from '@/components/ScreenerModal';
 import TradingViewWidget from '@/components/TradingViewWidget';
 import { StockQuoteData } from '@/lib/yahoo-finance';
 import { MessageSquare, LineChart, Columns } from 'lucide-react';
@@ -17,6 +18,7 @@ export default function Home() {
   const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [broksumText, setBroksumText] = useState('');
   const [isBroksumModalOpen, setIsBroksumModalOpen] = useState(false);
+  const [isScreenerModalOpen, setIsScreenerModalOpen] = useState(false);
   const [viewMode, setViewMode] = useState<'chat' | 'chart' | 'split'>('chat');
 
   // Fetch real-time market data whenever ticker changes
@@ -169,6 +171,11 @@ export default function Home() {
     setMessages([]);
   };
 
+  const handleSelectAndAnalyze = (ticker: string) => {
+    handleSelectTicker(ticker);
+    handleSendMessage(`${ticker} fase 1 wave count invalidation trading plan`);
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-terminal-950 text-slate-100">
       {/* Sticky Header with Ticker Search and 4-Phase Actions */}
@@ -177,6 +184,7 @@ export default function Home() {
         onSelectTicker={handleSelectTicker}
         onTriggerPhase={handleSendMessage}
         onOpenBroksumModal={() => setIsBroksumModalOpen(true)}
+        onOpenScreenerModal={() => setIsScreenerModalOpen(true)}
         hasBroksumData={!!broksumText.trim()}
         isLoading={isLoadingChat}
       />
@@ -295,6 +303,14 @@ export default function Home() {
         broksumText={broksumText}
         onSaveBroksum={(text) => setBroksumText(text)}
         currentTicker={currentTicker}
+      />
+
+      {/* Screener MaX (Kompas 100) Modal */}
+      <ScreenerModal
+        isOpen={isScreenerModalOpen}
+        onClose={() => setIsScreenerModalOpen(false)}
+        onSelectAndAnalyze={handleSelectAndAnalyze}
+        onSendToChat={handleSendMessage}
       />
     </div>
   );

@@ -54,7 +54,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function fetchTickerBars(ticker: string, userAgent: string) {
   const symbol = encodeURIComponent(`${ticker}.JK`);
-  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=2mo`;
+  // Use range=3mo (~65 bars) to satisfy MA50 and MA20 calculation
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=3mo`;
 
   const res = await fetch(url, {
     headers: {
@@ -70,16 +71,33 @@ async function fetchTickerBars(ticker: string, userAgent: string) {
   const result = json?.chart?.result?.[0];
   if (!result || !result.timestamp || result.timestamp.length < 20) return null;
 
-  const quote = result.indicators?.quote?.[0];
-  const closes = (quote?.close || []).filter((c: any) => c != null);
-  const opens = (quote?.open || []).filter((o: any) => o != null);
-  const highs = (quote?.high || []).filter((h: any) => h != null);
-  const lows = (quote?.low || []).filter((l: any) => l != null);
-  const volumes = (quote?.volume || []).filter((v: any) => v != null);
+  const quote = result.indicators?.quote?.[0] || {};
+  const opens = quote.open || [];
+  const highs = quote.high || [];
+  const lows = quote.low || [];
+  const closes = quote.close || [];
+  const volumes = quote.volume || [];
+  const timestamps = result.timestamp || [];
 
-  if (closes.length < 20) return null;
+  const validCloses: number[] = [];
+  const validOpens: number[] = [];
+  const validHighs: number[] = [];
+  const validLows: number[] = [];
+  const validVolumes: number[] = [];
 
-  return { closes, opens, highs, lows, volumes, meta: result.meta };
+  for (let i = 0; i < timestamps.length; i++) {
+    if (closes[i] != null && opens[i] != null && highs[i] != null && lows[i] != null) {
+      validCloses.push(Number(closes[i].toFixed(2)));
+      validOpens.push(Number(opens[i].toFixed(2)));
+      validHighs.push(Number(highs[i].toFixed(2)));
+      validLows.push(Number(lows[i].toFixed(2)));
+      validVolumes.push(volumes[i] ?? 0);
+    }
+  }
+
+  if (validCloses.length < 20) return null;
+
+  return { closes: validCloses, opens: validOpens, highs: validHighs, lows: validLows, volumes: validVolumes, meta: result.meta };
 }
 
 function calculateSMA(data: number[], window: number): number {

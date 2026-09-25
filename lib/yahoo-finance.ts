@@ -79,9 +79,9 @@ export async function fetchStockData(tickerInput: string): Promise<StockQuoteDat
   const symbol = normalizeTicker(tickerInput);
   const tickerClean = cleanDisplayTicker(symbol);
 
-  // Directly query Yahoo Finance v8 chart API - reliable, no crumb issues, no auth required
+  // Directly query Yahoo Finance v8 chart API with 1y range for true 52-week stats and MA200
   const encodedSymbol = encodeURIComponent(symbol);
-  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodedSymbol}?interval=1d&range=6mo`;
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodedSymbol}?interval=1d&range=1y`;
 
   const response = await fetch(url, {
     headers: {
@@ -159,19 +159,23 @@ export async function fetchStockData(tickerInput: string): Promise<StockQuoteDat
   const prevBar = validBars.length > 1 ? validBars[validBars.length - 2] : latestBar;
 
   const currentPrice = meta.regularMarketPrice ?? latestBar.close;
-  const prevClose = meta.chartPreviousClose ?? prevBar.close;
-  const change = currentPrice - prevClose;
-  const changePercent = prevClose ? (change / prevClose) * 100 : 0;
+  // Note: NEVER use meta.chartPreviousClose as yesterday's close because it represents the price 1y ago!
+  // Instead, use the closing price of the prior trading bar (validBars[len - 2]).
+  const prevClose = validBars.length > 1
+    ? prevBar.close
+    : (meta.previousClose ?? latestBar.open ?? latestBar.close);
+  const change = Number((currentPrice - prevClose).toFixed(2));
+  const changePercent = prevClose !== 0 ? Number(((change / prevClose) * 100).toFixed(2)) : 0;
 
   return {
     symbol,
     tickerClean,
     name: meta.longName || meta.shortName || tickerClean,
     price: Number(currentPrice.toFixed(2)),
-    change: Number(change.toFixed(2)),
-    changePercent: Number(changePercent.toFixed(2)),
-    volume: meta.regularMarketVolume ?? latestBar.volume,
-    open: meta.regularMarketDayHigh ? (latestBar.open || currentPrice) : latestBar.open,
+    change,
+    changePercent,
+    volume: meta.regularMarketVolume ?? latestBar.volume ?? 0,
+    open: latestBar.open ?? currentPrice,
     high: meta.regularMarketDayHigh ?? latestBar.high ?? currentPrice,
     low: meta.regularMarketDayLow ?? latestBar.low ?? currentPrice,
     previousClose: Number(prevClose.toFixed(2)),

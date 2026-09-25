@@ -103,7 +103,7 @@ export default function TradingPlanCard({
                   ? stockData.change.toFixed(2)
                   : stockData.change.toLocaleString('id-ID')
                 : '0'}
-              {' '}({stockData.changePercent != null ? stockData.changePercent.toFixed(2) : '0'}%)
+              {' '}({stockData.changePercent != null ? (isPositive ? `+${stockData.changePercent.toFixed(2)}` : stockData.changePercent.toFixed(2)) : '0'}%)
             </span>
           </div>
         </div>

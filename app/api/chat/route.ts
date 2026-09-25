@@ -74,25 +74,10 @@ export async function POST(request: NextRequest) {
     const stream = new ReadableStream({
       async start(controller) {
         if (stockData) {
+          const { csvHistory, ...safeStockData } = stockData;
           const metaPayload = JSON.stringify({
             type: 'meta',
-            stockData: {
-              symbol: stockData.symbol,
-              tickerClean: stockData.tickerClean,
-              name: stockData.name,
-              price: stockData.price,
-              change: stockData.change,
-              changePercent: stockData.changePercent,
-              volume: stockData.volume,
-              ma20: stockData.ma20,
-              ma50: stockData.ma50,
-              ma200: stockData.ma200,
-              rsi14: stockData.rsi14,
-              volumeRatio: stockData.volumeRatio,
-              fiftyTwoWeekHigh: stockData.fiftyTwoWeekHigh,
-              fiftyTwoWeekLow: stockData.fiftyTwoWeekLow,
-              latestDate: stockData.latestDate,
-            },
+            stockData: safeStockData,
           });
           controller.enqueue(encoder.encode(`event: meta\ndata: ${metaPayload}\n\n`));
         }

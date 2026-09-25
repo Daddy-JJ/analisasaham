@@ -111,8 +111,8 @@ export default function Home() {
               const parsed = JSON.parse(rawData);
 
               if (parsed.type === 'meta' && parsed.stockData) {
-                // Update technical snapshot card if new data comes in
-                setStockData(parsed.stockData);
+                // Safely merge technical snapshot card data
+                setStockData((prev) => ({ ...(prev || {}), ...parsed.stockData }));
               } else if (parsed.type === 'text' && parsed.content) {
                 accumulatedContent += parsed.content;
                 setMessages((prev) =>

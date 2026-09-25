@@ -84,7 +84,11 @@ export default function TradingPlanCard({
         </div>
         <div className="text-right">
           <div className="text-xl font-bold font-mono text-slate-100">
-            {isIHSG ? stockData.price.toFixed(2) : `Rp ${stockData.price.toLocaleString('id-ID')}`}
+            {stockData.price != null
+              ? isIHSG
+                ? stockData.price.toFixed(2)
+                : `Rp ${stockData.price.toLocaleString('id-ID')}`
+              : '-'}
           </div>
           <div
             className={`flex items-center justify-end gap-1 text-xs font-mono font-medium mt-0.5 ${
@@ -94,7 +98,12 @@ export default function TradingPlanCard({
             {isPositive ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
             <span>
               {isPositive ? '+' : ''}
-              {isIHSG ? stockData.change.toFixed(2) : stockData.change.toLocaleString('id-ID')} ({stockData.changePercent.toFixed(2)}%)
+              {stockData.change != null
+                ? isIHSG
+                  ? stockData.change.toFixed(2)
+                  : stockData.change.toLocaleString('id-ID')
+                : '0'}
+              {' '}({stockData.changePercent != null ? stockData.changePercent.toFixed(2) : '0'}%)
             </span>
           </div>
         </div>
@@ -105,18 +114,18 @@ export default function TradingPlanCard({
         <div className="bg-terminal-950/60 p-2 rounded-lg border border-terminal-800/60">
           <span className="text-slate-500 block text-[10px]">Rentang Hari Ini</span>
           <span className="text-slate-200">
-            {stockData.low.toLocaleString('id-ID')} - {stockData.high.toLocaleString('id-ID')}
+            {stockData.low != null ? stockData.low.toLocaleString('id-ID') : '-'} - {stockData.high != null ? stockData.high.toLocaleString('id-ID') : '-'}
           </span>
         </div>
         <div className="bg-terminal-950/60 p-2 rounded-lg border border-terminal-800/60">
           <span className="text-slate-500 block text-[10px]">52-Week Range</span>
           <span className="text-slate-200">
-            {stockData.fiftyTwoWeekLow.toLocaleString('id-ID')} - {stockData.fiftyTwoWeekHigh.toLocaleString('id-ID')}
+            {stockData.fiftyTwoWeekLow != null ? stockData.fiftyTwoWeekLow.toLocaleString('id-ID') : '-'} - {stockData.fiftyTwoWeekHigh != null ? stockData.fiftyTwoWeekHigh.toLocaleString('id-ID') : '-'}
           </span>
         </div>
         <div className="bg-terminal-950/60 p-2 rounded-lg border border-terminal-800/60">
           <span className="text-slate-500 block text-[10px]">Volume Terakhir</span>
-          <span className="text-slate-200">{stockData.volume.toLocaleString('id-ID')}</span>
+          <span className="text-slate-200">{stockData.volume != null ? stockData.volume.toLocaleString('id-ID') : '-'}</span>
         </div>
         <div className="bg-terminal-950/60 p-2 rounded-lg border border-terminal-800/60">
           <span className="text-slate-500 block text-[10px]">Vol Ratio (vs MA20)</span>

@@ -79,6 +79,36 @@ Top Seller:
 
 Foreign Flow: Net Sell -25.2 Miliar`;
 
+const SAMPLE_ORDERBOOK_DSSA = `[ORDERBOOK]
+DSSA 1,055 -35 (-3.21%)
+Open: 1,095 | High: 1,125 | Low: 1,050 | Prev: 1,090
+Lot: 3.05M | Val: 332.53B | Avg: 1,089 | Freq: 28,047
+F Buy: 65.6 B | F Sell: 92.5 B
+Total Bid: 571,744 (Freq 3,428)
+Total Offer: 1,759,762 (Freq 9,146)
+3,428 571,744 1,759,762 9,146`;
+
+const SAMPLE_COMBINED_DSSA = `[ORDERBOOK]
+DSSA 1,055 -35 (-3.21%)
+Open: 1,095 | High: 1,125 | Low: 1,050 | Prev: 1,090
+Lot: 3.05M | Val: 332.53B | Avg: 1,089 | Freq: 28,047
+F Buy: 65.6 B | F Sell: 92.5 B
+Total Bid: 571,744 (Freq 3,428)
+Total Offer: 1,759,762 (Freq 9,146)
+
+[BROKER SUMMARY]
+Tanggal: 25 Sep 26
+Top 1: -8.1B (Small Dist)
+Top 3: -9.7B (Normal Dist)
+Top 5: -14.5B (Big Dist)
+BUYER B.Lot B.Val B.Avg SELLER S.Lot S.Val S.Avg
+LG 86.2K 9.7B 1095 TP 160.5K 17.1B 1069
+AZ 87.1K 9.5B 1085 BK 95.9K 10.3B 1074
+RF 80K 8.7B 1094 AI 85.8K 9.7B 1115
+CC 50.3K 5.4B 1094 YJ 69.9K 7.4B 1059
+PD 35.5K 3.9B 1089 AK 59.7K 7.1B 1101
+YP 34.8K 3.8B 1090 GR 49.2K 5.3B 1078`;
+
 export default function BroksumModal({
   isOpen,
   onClose,
@@ -317,15 +347,15 @@ export default function BroksumModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-slate-100 text-sm">Smart Broker Summary & Bandarmology Parser</h3>
+                <h3 className="font-semibold text-slate-100 text-sm">Smart Broksum & Orderbook Terminal</h3>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-mono">
-                  Vision AI + OpenAPI 3.1
+                  Vision AI • Tape Reading • OpenAPI 3.1
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Emiten Aktif: <span className="text-cyan-400 font-mono font-bold">{currentTicker || 'PILIH EMITEN'}</span>
+                Emiten: <span className="text-cyan-400 font-mono font-bold">{currentTicker || 'PILIH EMITEN'}</span>
                 {' • '}
-                <span>Bisa paste screenshot langsung (Ctrl+V) atau copy-paste teks tabel</span>
+                <span>Paste screenshot Orderbook / Broksum (Ctrl+V) atau input teks</span>
               </p>
             </div>
           </div>
@@ -445,6 +475,22 @@ export default function BroksumModal({
               >
                 <BookOpen className="w-3 h-3" />
                 <span>{showBrokerRef ? 'Tutup Klasifikasi' : 'Referensi Broker IDX'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputText(SAMPLE_COMBINED_DSSA)}
+                className="px-2 py-1 text-[11px] rounded bg-terminal-800 hover:bg-terminal-700 text-purple-300 border border-purple-800/60 transition-colors"
+                title="Contoh kombinasi Broksum dan Orderbook DSSA"
+              >
+                Broksum + OB (DSSA)
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputText(SAMPLE_ORDERBOOK_DSSA)}
+                className="px-2 py-1 text-[11px] rounded bg-terminal-800 hover:bg-terminal-700 text-blue-300 border border-blue-800/60 transition-colors"
+                title="Contoh Orderbook DSSA"
+              >
+                Orderbook (DSSA)
               </button>
               <button
                 type="button"
@@ -678,68 +724,204 @@ export default function BroksumModal({
                 </div>
               </div>
 
-              {/* Side-by-side Top Buyer vs Top Seller Preview */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
-                {/* Buyers */}
-                <div className="bg-terminal-900/50 p-2 rounded border border-terminal-800/80">
-                  <div className="text-emerald-400 font-semibold mb-1 flex items-center justify-between">
-                    <span>Top Net Buyer ({parsed.topBuyers.length})</span>
-                    <span className="text-[10px] text-slate-400">{formatRupiahShort(parsed.totalBuyerValue)}</span>
+              {/* Orderbook Microstructure Card (if available) */}
+              {parsed.orderbook?.hasOrderbook && (
+                <div className="bg-terminal-900/60 border border-terminal-800 rounded-lg p-3 space-y-2.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2 pb-1.5 border-b border-terminal-800/80">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+                      <span className="text-xs font-semibold text-slate-200">
+                        Orderbook Microstructure (Tape Reading)
+                      </span>
+                    </div>
+                    {parsed.orderbook.orderbookPosture && (
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded font-medium border ${
+                          parsed.orderbook.orderbookPosture === 'HEAVY_OFFER_SUPPRESSION'
+                            ? 'bg-rose-950/80 text-rose-300 border-rose-800/70'
+                            : parsed.orderbook.orderbookPosture === 'STRONG_BID_CUSHION'
+                            ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800/70'
+                            : 'bg-slate-800 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        {parsed.orderbook.orderbookPosture === 'HEAVY_OFFER_SUPPRESSION'
+                          ? 'Offer Wall Suppression'
+                          : parsed.orderbook.orderbookPosture === 'STRONG_BID_CUSHION'
+                          ? 'Strong Bid Cushion'
+                          : 'Balanced Orderbook'}
+                      </span>
+                    )}
                   </div>
-                  <div className="space-y-1">
-                    {parsed.topBuyers.slice(0, 5).map((b, i) => (
-                      <div key={i} className="flex items-center justify-between font-mono text-[10px] text-slate-300">
-                        <div className="flex items-center gap-1">
-                          <span
-                            className="font-bold text-slate-100 hover:text-cyan-300 cursor-help transition-colors"
-                            title={b.brokerName ? `${b.broker} — ${b.brokerName}${b.character ? ` (${b.character})` : ''}` : b.broker}
-                          >
-                            {b.broker}
-                          </span>
-                          {renderBrokerBadge(b.broker, b)}
-                        </div>
-                        <div className="text-right">
-                          <span>{formatNumberShort(b.lot)} lot</span>
-                          <span className="text-slate-400 ml-1.5">{formatRupiahShort(b.value)}</span>
-                          {b.avgPrice > 0 && (
-                            <span className="text-slate-500 ml-1">@{b.avgPrice.toLocaleString('id-ID')}</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
 
-                {/* Sellers */}
-                <div className="bg-terminal-900/50 p-2 rounded border border-terminal-800/80">
-                  <div className="text-rose-400 font-semibold mb-1 flex items-center justify-between">
-                    <span>Top Net Seller ({parsed.topSellers.length})</span>
-                    <span className="text-[10px] text-slate-400">{formatRupiahShort(parsed.totalSellerValue)}</span>
-                  </div>
-                  <div className="space-y-1">
-                    {parsed.topSellers.slice(0, 5).map((s, i) => (
-                      <div key={i} className="flex items-center justify-between font-mono text-[10px] text-slate-300">
-                        <div className="flex items-center gap-1">
-                          <span
-                            className="font-bold text-slate-100 hover:text-cyan-300 cursor-help transition-colors"
-                            title={s.brokerName ? `${s.broker} — ${s.brokerName}${s.character ? ` (${s.character})` : ''}` : s.broker}
-                          >
-                            {s.broker}
+                  {/* Bid vs Offer Visual Bar */}
+                  {parsed.orderbook.totalBidLot && parsed.orderbook.totalOfferLot && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-[11px] font-mono">
+                        <span className="text-emerald-400 font-semibold">
+                          Bid: {formatNumberShort(parsed.orderbook.totalBidLot)} lot{' '}
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            ({Math.round(
+                              (parsed.orderbook.totalBidLot /
+                                (parsed.orderbook.totalBidLot + parsed.orderbook.totalOfferLot)) *
+                                100
+                            )}%)
                           </span>
-                          {renderBrokerBadge(s.broker, s)}
-                        </div>
-                        <div className="text-right">
-                          <span>{formatNumberShort(s.lot)} lot</span>
-                          <span className="text-slate-400 ml-1.5">{formatRupiahShort(s.value)}</span>
-                          {s.avgPrice > 0 && (
-                            <span className="text-slate-500 ml-1">@{s.avgPrice.toLocaleString('id-ID')}</span>
+                        </span>
+                        <span className="text-slate-400 text-[10px]">
+                          Ratio: {parsed.orderbook.bidOfferRatio}x
+                        </span>
+                        <span className="text-rose-400 font-semibold">
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            ({Math.round(
+                              (parsed.orderbook.totalOfferLot /
+                                (parsed.orderbook.totalBidLot + parsed.orderbook.totalOfferLot)) *
+                                100
+                            )}%){' '}
+                          </span>
+                          Offer: {formatNumberShort(parsed.orderbook.totalOfferLot)} lot
+                        </span>
+                      </div>
+                      <div className="w-full h-2.5 bg-terminal-950 rounded-full overflow-hidden flex border border-terminal-800">
+                        <div
+                          className="h-full bg-emerald-500 transition-all duration-500"
+                          style={{
+                            width: `${Math.round(
+                              (parsed.orderbook.totalBidLot /
+                                (parsed.orderbook.totalBidLot + parsed.orderbook.totalOfferLot)) *
+                                100
+                            )}%`,
+                          }}
+                        />
+                        <div
+                          className="h-full bg-rose-500 transition-all duration-500"
+                          style={{
+                            width: `${Math.round(
+                              (parsed.orderbook.totalOfferLot /
+                                (parsed.orderbook.totalBidLot + parsed.orderbook.totalOfferLot)) *
+                                100
+                            )}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Orderbook Key Metrics Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                    {parsed.orderbook.lastPrice !== undefined && (
+                      <div className="bg-terminal-950/60 p-1.5 rounded border border-terminal-800">
+                        <div className="text-[9px] text-slate-400">Harga Terakhir</div>
+                        <div className="font-bold text-slate-200">
+                          Rp {parsed.orderbook.lastPrice.toLocaleString('id-ID')}
+                          {parsed.orderbook.changePercent !== undefined && (
+                            <span
+                              className={`text-[10px] ml-1 ${
+                                parsed.orderbook.changePercent < 0 ? 'text-rose-400' : 'text-emerald-400'
+                              }`}
+                            >
+                              {parsed.orderbook.changePercent > 0 ? '+' : ''}
+                              {parsed.orderbook.changePercent}%
+                            </span>
                           )}
                         </div>
                       </div>
-                    ))}
+                    )}
+                    {parsed.orderbook.netForeignIntraday !== undefined && (
+                      <div className="bg-terminal-950/60 p-1.5 rounded border border-terminal-800">
+                        <div className="text-[9px] text-slate-400">Net Asing Intraday</div>
+                        <div
+                          className={`font-bold ${
+                            parsed.orderbook.netForeignIntraday < 0 ? 'text-rose-400' : 'text-emerald-400'
+                          }`}
+                        >
+                          {formatRupiahShort(parsed.orderbook.netForeignIntraday)}
+                        </div>
+                      </div>
+                    )}
+                    {parsed.orderbook.totalValue !== undefined && (
+                      <div className="bg-terminal-950/60 p-1.5 rounded border border-terminal-800">
+                        <div className="text-[9px] text-slate-400">Turnover Orderbook</div>
+                        <div className="font-bold text-cyan-400">
+                          {formatRupiahShort(parsed.orderbook.totalValue)}
+                        </div>
+                      </div>
+                    )}
+                    {parsed.orderbook.avg !== undefined && (
+                      <div className="bg-terminal-950/60 p-1.5 rounded border border-terminal-800">
+                        <div className="text-[9px] text-slate-400">Avg Transaksi</div>
+                        <div className="font-bold text-slate-300">
+                          Rp {parsed.orderbook.avg.toLocaleString('id-ID')}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
+              )}
+
+              {/* Side-by-side Top Buyer vs Top Seller Preview (if present) */}
+              {(parsed.topBuyers.length > 0 || parsed.topSellers.length > 0) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  {/* Buyers */}
+                  <div className="bg-terminal-900/50 p-2 rounded border border-terminal-800/80">
+                    <div className="text-emerald-400 font-semibold mb-1 flex items-center justify-between">
+                      <span>Top Net Buyer ({parsed.topBuyers.length})</span>
+                      <span className="text-[10px] text-slate-400">{formatRupiahShort(parsed.totalBuyerValue)}</span>
+                    </div>
+                    <div className="space-y-1">
+                      {parsed.topBuyers.slice(0, 5).map((b, i) => (
+                        <div key={i} className="flex items-center justify-between font-mono text-[10px] text-slate-300">
+                          <div className="flex items-center gap-1">
+                            <span
+                              className="font-bold text-slate-100 hover:text-cyan-300 cursor-help transition-colors"
+                              title={b.brokerName ? `${b.broker} — ${b.brokerName}${b.character ? ` (${b.character})` : ''}` : b.broker}
+                            >
+                              {b.broker}
+                            </span>
+                            {renderBrokerBadge(b.broker, b)}
+                          </div>
+                          <div className="text-right">
+                            <span>{formatNumberShort(b.lot)} lot</span>
+                            <span className="text-slate-400 ml-1.5">{formatRupiahShort(b.value)}</span>
+                            {b.avgPrice > 0 && (
+                              <span className="text-slate-500 ml-1">@{b.avgPrice.toLocaleString('id-ID')}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Sellers */}
+                  <div className="bg-terminal-900/50 p-2 rounded border border-terminal-800/80">
+                    <div className="text-rose-400 font-semibold mb-1 flex items-center justify-between">
+                      <span>Top Net Seller ({parsed.topSellers.length})</span>
+                      <span className="text-[10px] text-slate-400">{formatRupiahShort(parsed.totalSellerValue)}</span>
+                    </div>
+                    <div className="space-y-1">
+                      {parsed.topSellers.slice(0, 5).map((s, i) => (
+                        <div key={i} className="flex items-center justify-between font-mono text-[10px] text-slate-300">
+                          <div className="flex items-center gap-1">
+                            <span
+                              className="font-bold text-slate-100 hover:text-cyan-300 cursor-help transition-colors"
+                              title={s.brokerName ? `${s.broker} — ${s.brokerName}${s.character ? ` (${s.character})` : ''}` : s.broker}
+                            >
+                              {s.broker}
+                            </span>
+                            {renderBrokerBadge(s.broker, s)}
+                          </div>
+                          <div className="text-right">
+                            <span>{formatNumberShort(s.lot)} lot</span>
+                            <span className="text-slate-400 ml-1.5">{formatRupiahShort(s.value)}</span>
+                            {s.avgPrice > 0 && (
+                              <span className="text-slate-500 ml-1">@{s.avgPrice.toLocaleString('id-ID')}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Reasons & Rationale bullets */}
               {parsed.reasons.length > 0 && (

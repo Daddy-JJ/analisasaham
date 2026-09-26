@@ -92,8 +92,24 @@ export function buildContextPrompt(
           : ` [${s.category}]`;
         context += `${i + 1}. ${s.broker}${meta}: ${s.lot.toLocaleString('id-ID')} lot @ Avg ${s.avgPrice} (Nilai: ${formatRupiahShort(s.value)})\n`;
       });
+      if (parsed.orderbook?.hasOrderbook) {
+        context += `\n--- DATA ORDERBOOK & TAPE READING (MICROSTRUCTURE) ---\n`;
+        if (parsed.orderbook.lastPrice) context += `Last Price: Rp ${parsed.orderbook.lastPrice.toLocaleString('id-ID')} (${parsed.orderbook.changePercent !== undefined ? `${parsed.orderbook.changePercent > 0 ? '+' : ''}${parsed.orderbook.changePercent}%` : ''})\n`;
+        if (parsed.orderbook.open) context += `Open: ${parsed.orderbook.open} | High: ${parsed.orderbook.high} | Low: ${parsed.orderbook.low} | Prev: ${parsed.orderbook.prev}\n`;
+        if (parsed.orderbook.totalBidLot && parsed.orderbook.totalOfferLot) {
+          context += `Total Bid: ${parsed.orderbook.totalBidLot.toLocaleString('id-ID')} lot vs Total Offer: ${parsed.orderbook.totalOfferLot.toLocaleString('id-ID')} lot\n`;
+          context += `Bid/Offer Ratio: ${parsed.orderbook.bidOfferRatio}x (Posture: ${parsed.orderbook.orderbookPosture})\n`;
+        }
+        if (parsed.orderbook.foreignBuy !== undefined && parsed.orderbook.foreignSell !== undefined) {
+          context += `Foreign Buy: ${formatRupiahShort(parsed.orderbook.foreignBuy)} | Foreign Sell: ${formatRupiahShort(parsed.orderbook.foreignSell)} | Net Foreign Intraday: ${formatRupiahShort(parsed.orderbook.netForeignIntraday || 0)}\n`;
+        }
+        if (parsed.orderbook.tapeReadingSignal) {
+          context += `Tape Reading Signal: ${parsed.orderbook.tapeReadingSignal}\n`;
+        }
+        context += `--- AKHIR DATA ORDERBOOK ---\n`;
+      }
       if (parsed.reasons.length > 0) {
-        context += `\nFakta Analitik Bandarmology:\n`;
+        context += `\nFakta Analitik Bandarmology & Tape Reading:\n`;
         parsed.reasons.forEach((r) => {
           context += `- ${r}\n`;
         });

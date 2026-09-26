@@ -109,6 +109,50 @@ CC 50.3K 5.4B 1094 YJ 69.9K 7.4B 1059
 PD 35.5K 3.9B 1089 AK 59.7K 7.1B 1101
 YP 34.8K 3.8B 1090 GR 49.2K 5.3B 1078`;
 
+// Helper to intelligently update/replace either the [ORDERBOOK] or [BROKER SUMMARY] block
+function updateTextSection(
+  currentFullText: string,
+  newSectionText: string,
+  target: 'broksum' | 'orderbook'
+): string {
+  const obHeaderRegex = /\[ORDERBOOK\][\s\S]*?(?=(\[BROKER SUMMARY\]|$))/i;
+  const bsHeaderRegex = /\[BROKER SUMMARY\][\s\S]*/i;
+
+  const existingObMatch = currentFullText.match(obHeaderRegex);
+  const existingBsMatch = currentFullText.match(bsHeaderRegex);
+
+  let existingOb = existingObMatch ? existingObMatch[0].trim() : '';
+  let existingBs = existingBsMatch ? existingBsMatch[0].trim() : '';
+
+  // If there are no tags yet, but currentFullText has text:
+  if (!existingOb && !existingBs && currentFullText.trim()) {
+    if (target === 'orderbook') {
+      existingBs = `[BROKER SUMMARY]\n${currentFullText.trim()}`;
+    } else {
+      existingOb = `[ORDERBOOK]\n${currentFullText.trim()}`;
+    }
+  }
+
+  if (target === 'broksum') {
+    const formattedBs = newSectionText.startsWith('[BROKER SUMMARY]')
+      ? newSectionText.trim()
+      : `[BROKER SUMMARY]\n${newSectionText.trim()}`;
+    if (existingOb) {
+      return `${existingOb}\n\n${formattedBs}`;
+    }
+    return formattedBs;
+  } else {
+    // target === 'orderbook'
+    const formattedOb = newSectionText.startsWith('[ORDERBOOK]')
+      ? newSectionText.trim()
+      : `[ORDERBOOK]\n${newSectionText.trim()}`;
+    if (existingBs) {
+      return `${formattedOb}\n\n${existingBs}`;
+    }
+    return formattedOb;
+  }
+}
+
 export default function BroksumModal({
   isOpen,
   onClose,
@@ -119,15 +163,23 @@ export default function BroksumModal({
   currentTicker,
 }: BroksumModalProps) {
   const [inputText, setInputText] = useState(broksumText);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
-  const [isOcrLoading, setIsOcrLoading] = useState(false);
+
+  // Dedicated states for 1. Broksum and 2. Orderbook
+  const [broksumImagePreview, setBroksumImagePreview] = useState<string | null>(null);
+  const [orderbookImagePreview, setOrderbookImagePreview] = useState<string | null>(null);
+  const [isBroksumLoading, setIsBroksumLoading] = useState(false);
+  const [isOrderbookLoading, setIsOrderbookLoading] = useState(false);
+  const [isBroksumDragging, setIsBroksumDragging] = useState(false);
+  const [isOrderbookDragging, setIsOrderbookDragging] = useState(false);
+  const [activePasteTarget, setActivePasteTarget] = useState<'broksum' | 'orderbook'>('broksum');
+
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [detectedTicker, setDetectedTicker] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [showBrokerRef, setShowBrokerRef] = useState(false);
   const [brokerSearch, setBrokerSearch] = useState('');
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const broksumFileInputRef = useRef<HTMLInputElement>(null);
+  const orderbookFileInputRef = useRef<HTMLInputElement>(null);
 
   // Synchronous live parsing as user types, pastes, or after OCR
   const parsed: ParsedBroksumResult = useMemo(() => {
@@ -143,45 +195,71 @@ export default function BroksumModal({
     }
   }, [isOpen, broksumText]);
 
-  // Image processor for file uploads or clipboard pastes
-  const processImageFile = async (file: File) => {
+  // Image processor for file uploads or clipboard pastes with dedicated mode
+  const processImageFile = async (file: File, target: 'broksum' | 'orderbook') => {
     if (!file.type.startsWith('image/')) {
       setOcrError('File yang dipilih harus berupa gambar (PNG, JPG, JPEG, WebP).');
       return;
     }
     setOcrError(null);
-    setIsOcrLoading(true);
+
+    if (target === 'broksum') {
+      setIsBroksumLoading(true);
+    } else {
+      setIsOrderbookLoading(true);
+    }
 
     const reader = new FileReader();
     reader.onload = async (e) => {
       const base64 = e.target?.result as string;
-      setImagePreviewUrl(base64);
+      if (target === 'broksum') {
+        setBroksumImagePreview(base64);
+      } else {
+        setOrderbookImagePreview(base64);
+      }
 
       try {
         const res = await fetch('/api/broksum/ocr', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64, ticker: currentTicker }),
+          body: JSON.stringify({
+            image: base64,
+            ticker: currentTicker,
+            mode: target,
+          }),
         });
         const data = await res.json();
         if (!data.ok) {
           throw new Error(data.message || 'Gagal membaca gambar');
         }
-        setInputText(data.text);
+
+        setInputText((prev) => updateTextSection(prev, data.text, target));
+
         if (data.detectedTicker && data.detectedTicker !== currentTicker) {
           setDetectedTicker(data.detectedTicker);
+        }
+
+        // Auto-switch target to the other card if it's currently empty (seamless 2-step screenshot workflow)
+        if (target === 'broksum' && !orderbookImagePreview) {
+          setActivePasteTarget('orderbook');
+        } else if (target === 'orderbook' && !broksumImagePreview) {
+          setActivePasteTarget('broksum');
         }
       } catch (err: any) {
         console.error('OCR Error:', err);
         setOcrError(err.message || 'Gagal mengekstrak data dari screenshot. Coba potong gambar lebih fokus ke tabel.');
       } finally {
-        setIsOcrLoading(false);
+        if (target === 'broksum') {
+          setIsBroksumLoading(false);
+        } else {
+          setIsOrderbookLoading(false);
+        }
       }
     };
     reader.readAsDataURL(file);
   };
 
-  // Clipboard paste listener: enables instant Ctrl + V anywhere inside the modal
+  // Clipboard paste listener: enables instant Ctrl + V targeting active card
   useEffect(() => {
     if (!isOpen) return;
 
@@ -194,7 +272,7 @@ export default function BroksumModal({
           const file = items[i].getAsFile();
           if (file) {
             e.preventDefault();
-            processImageFile(file);
+            processImageFile(file, activePasteTarget);
             break;
           }
         }
@@ -205,7 +283,7 @@ export default function BroksumModal({
     return () => {
       window.removeEventListener('paste', handlePaste);
     };
-  }, [isOpen, currentTicker]);
+  }, [isOpen, currentTicker, activePasteTarget, orderbookImagePreview, broksumImagePreview]);
 
   if (!isOpen) return null;
 
@@ -224,34 +302,41 @@ export default function BroksumModal({
 
   const handleClear = () => {
     setInputText('');
-    setImagePreviewUrl(null);
+    setBroksumImagePreview(null);
+    setOrderbookImagePreview(null);
     setOcrError(null);
     setDetectedTicker(null);
+    setActivePasteTarget('broksum');
     onSaveBroksum('');
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      processImageFile(file);
+  const handleRemoveBroksum = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setBroksumImagePreview(null);
+    const obHeaderRegex = /\[ORDERBOOK\][\s\S]*?(?=(\[BROKER SUMMARY\]|$))/i;
+    const match = inputText.match(obHeaderRegex);
+    if (match) {
+      setInputText(match[0].trim());
+    } else {
+      const bsHeaderRegex = /\[BROKER SUMMARY\][\s\S]*/i;
+      if (bsHeaderRegex.test(inputText)) {
+        setInputText('');
+      }
     }
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = () => {
-    setIsDragging(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      processImageFile(file);
+  const handleRemoveOrderbook = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOrderbookImagePreview(null);
+    const bsHeaderRegex = /\[BROKER SUMMARY\][\s\S]*/i;
+    const match = inputText.match(bsHeaderRegex);
+    if (match) {
+      setInputText(match[0].trim());
+    } else {
+      const obHeaderRegex = /\[ORDERBOOK\][\s\S]*?(?=(\[BROKER SUMMARY\]|$))/i;
+      if (obHeaderRegex.test(inputText)) {
+        setInputText('');
+      }
     }
   };
 
@@ -338,7 +423,7 @@ export default function BroksumModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-terminal-900 border border-terminal-700 rounded-xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[92vh]">
+      <div className="bg-terminal-900 border border-terminal-700 rounded-xl w-full max-w-3xl shadow-2xl flex flex-col max-h-[94vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between p-4 border-b border-terminal-800">
           <div className="flex items-center gap-2.5">
@@ -349,13 +434,13 @@ export default function BroksumModal({
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold text-slate-100 text-sm">Smart Broksum & Orderbook Terminal</h3>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-mono">
-                  Vision AI • Tape Reading • OpenAPI 3.1
+                  Dual Vision AI • Tape Reading • Bandarmology
                 </span>
               </div>
               <p className="text-xs text-slate-400">
                 Emiten: <span className="text-cyan-400 font-mono font-bold">{currentTicker || 'PILIH EMITEN'}</span>
                 {' • '}
-                <span>Paste screenshot Orderbook / Broksum (Ctrl+V) atau input teks</span>
+                <span>Upload screenshot terpisah untuk Broker Summary dan Orderbook (Ctrl+V didukung)</span>
               </p>
             </div>
           </div>
@@ -369,65 +454,323 @@ export default function BroksumModal({
 
         {/* Modal Body */}
         <div className="p-4 space-y-3.5 overflow-y-auto flex-1">
-          {/* Screenshot Upload / Paste Box */}
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`border-2 border-dashed rounded-xl p-3.5 transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-between gap-3 ${
-              isDragging
-                ? 'border-cyan-400 bg-cyan-950/30'
-                : 'border-terminal-700 bg-terminal-950/70 hover:border-cyan-500/70 hover:bg-terminal-950'
-            }`}
-          >
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept="image/*"
-              className="hidden"
-            />
+          {/* Target Ctrl+V Selector */}
+          <div className="flex items-center justify-between text-xs pb-0.5">
+            <div className="flex items-center gap-1.5 text-slate-300 font-medium">
+              <UploadCloud className="w-4 h-4 text-cyan-400" />
+              <span>Input Screenshot (2 Bagian Terpisah):</span>
+            </div>
+            <div className="flex items-center gap-1 bg-terminal-950 p-0.5 rounded-lg border border-terminal-800 text-[11px]">
+              <span className="text-slate-400 px-1 text-[10px]">Ctrl+V Aktif:</span>
+              <button
+                type="button"
+                onClick={() => setActivePasteTarget('broksum')}
+                className={`px-2 py-0.5 rounded font-medium transition-colors ${
+                  activePasteTarget === 'broksum'
+                    ? 'bg-amber-950 text-amber-300 border border-amber-700/80 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                1. Broksum
+              </button>
+              <button
+                type="button"
+                onClick={() => setActivePasteTarget('orderbook')}
+                className={`px-2 py-0.5 rounded font-medium transition-colors ${
+                  activePasteTarget === 'orderbook'
+                    ? 'bg-cyan-950 text-cyan-300 border border-cyan-700/80 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                2. Orderbook
+              </button>
+            </div>
+          </div>
 
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-cyan-950/70 border border-cyan-700/60 flex items-center justify-center text-cyan-400 shrink-0">
-                {isOcrLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+          {/* Dual Upload Cards: 1. Broker Summary & 2. Orderbook */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* CARD 1: BROKER SUMMARY */}
+            <div
+              onClick={() => {
+                setActivePasteTarget('broksum');
+                if (!broksumImagePreview) {
+                  broksumFileInputRef.current?.click();
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsBroksumDragging(true);
+              }}
+              onDragLeave={() => setIsBroksumDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsBroksumDragging(false);
+                setActivePasteTarget('broksum');
+                const file = e.dataTransfer.files?.[0];
+                if (file) processImageFile(file, 'broksum');
+              }}
+              className={`border-2 rounded-xl p-3 transition-all cursor-pointer relative flex flex-col justify-between min-h-[110px] ${
+                isBroksumDragging
+                  ? 'border-amber-400 bg-amber-950/40 ring-2 ring-amber-500/40'
+                  : activePasteTarget === 'broksum'
+                  ? 'border-amber-500/80 bg-terminal-950 shadow-md shadow-amber-950/20'
+                  : 'border-terminal-750 bg-terminal-950/60 hover:border-terminal-600'
+              }`}
+            >
+              <input
+                type="file"
+                ref={broksumFileInputRef}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) processImageFile(file, 'broksum');
+                }}
+                accept="image/*"
+                className="hidden"
+              />
+
+              {/* Card Header */}
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-terminal-850">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded bg-amber-950/80 border border-amber-800/80 flex items-center justify-center text-amber-400">
+                    <FileSpreadsheet className="w-3 h-3" />
+                  </div>
+                  <span className="text-xs font-semibold text-slate-200">1. Broker Summary</span>
+                </div>
+                {activePasteTarget === 'broksum' ? (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800/80 font-mono flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse"></span>
+                    Target Ctrl+V
+                  </span>
                 ) : (
-                  <UploadCloud className="w-5 h-5" />
+                  <span className="text-[10px] text-slate-500">Klik utk aktifkan</span>
                 )}
               </div>
-              <div className="text-left">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-semibold text-slate-200">
-                    {isOcrLoading ? 'Gemini AI sedang membaca screenshot...' : 'Upload Screenshot Stockbit / Sekuritas'}
-                  </span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800/60 font-mono">
-                    OCR AI
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Tinggal tekan <kbd className="px-1.5 py-0.5 bg-terminal-800 rounded text-cyan-300 font-mono text-[10px] border border-terminal-700">Ctrl + V</kbd> untuk paste gambar langsung, atau klik untuk memilih file.
-                </p>
+
+              {/* Card Content */}
+              <div className="py-2">
+                {isBroksumLoading ? (
+                  <div className="flex items-center gap-2.5 text-amber-300 py-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <div>
+                      <div className="text-xs font-medium">Gemini Vision AI membaca Broksum...</div>
+                      <div className="text-[10px] text-slate-400">Ekstraksi Buyer, Seller, Lot, Value & Avg</div>
+                    </div>
+                  </div>
+                ) : broksumImagePreview ? (
+                  <div className="flex items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="relative group">
+                        <img
+                          src={broksumImagePreview}
+                          alt="Preview Broksum"
+                          className="w-14 h-12 object-cover rounded border border-terminal-700 shadow"
+                        />
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            broksumFileInputRef.current?.click();
+                          }}
+                          className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded cursor-pointer"
+                          title="Ganti gambar screenshot"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5 text-white" />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Broksum terekstrak</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          Tabel buyer/seller sudah dimuat
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          broksumFileInputRef.current?.click();
+                        }}
+                        className="text-[11px] px-2 py-1 rounded bg-terminal-800 hover:bg-terminal-700 text-slate-300 border border-terminal-700"
+                      >
+                        Ganti
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveBroksum}
+                        className="p-1 rounded text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 transition-colors"
+                        title="Hapus gambar & teks Broksum"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2.5 py-1">
+                    <div className="w-8 h-8 rounded-lg bg-amber-950/50 border border-amber-800/50 flex items-center justify-center text-amber-400 shrink-0">
+                      <UploadCloud className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium text-slate-200">
+                        Upload Screenshot Broksum
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        Drop, klik pilih file, atau tekan <kbd className="px-1 py-0.2 bg-terminal-800 rounded text-amber-300 font-mono text-[9px] border border-terminal-700">Ctrl + V</kbd>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Card Footer Note */}
+              <div className="text-[10px] text-slate-500 pt-1 border-t border-terminal-900 flex items-center justify-between">
+                <span>Stockbit / IPOT / Mirae / Neo HOTS</span>
+                <span className="font-mono text-slate-400">Mode: broksum</span>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {imagePreviewUrl && (
-                <div className="relative group">
-                  <img
-                    src={imagePreviewUrl}
-                    alt="Preview Broksum"
-                    className="w-10 h-10 object-cover rounded border border-terminal-700 shadow"
-                  />
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded">
-                    <RefreshCw className="w-3.5 h-3.5 text-white" />
+            {/* CARD 2: ORDERBOOK */}
+            <div
+              onClick={() => {
+                setActivePasteTarget('orderbook');
+                if (!orderbookImagePreview) {
+                  orderbookFileInputRef.current?.click();
+                }
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsOrderbookDragging(true);
+              }}
+              onDragLeave={() => setIsOrderbookDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsOrderbookDragging(false);
+                setActivePasteTarget('orderbook');
+                const file = e.dataTransfer.files?.[0];
+                if (file) processImageFile(file, 'orderbook');
+              }}
+              className={`border-2 rounded-xl p-3 transition-all cursor-pointer relative flex flex-col justify-between min-h-[110px] ${
+                isOrderbookDragging
+                  ? 'border-cyan-400 bg-cyan-950/40 ring-2 ring-cyan-500/40'
+                  : activePasteTarget === 'orderbook'
+                  ? 'border-cyan-500/80 bg-terminal-950 shadow-md shadow-cyan-950/20'
+                  : 'border-terminal-750 bg-terminal-950/60 hover:border-terminal-600'
+              }`}
+            >
+              <input
+                type="file"
+                ref={orderbookFileInputRef}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) processImageFile(file, 'orderbook');
+                }}
+                accept="image/*"
+                className="hidden"
+              />
+
+              {/* Card Header */}
+              <div className="flex items-center justify-between gap-1 pb-1.5 border-b border-terminal-850">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded bg-cyan-950/80 border border-cyan-800/80 flex items-center justify-center text-cyan-400">
+                    <Layers className="w-3 h-3" />
                   </div>
+                  <span className="text-xs font-semibold text-slate-200">2. Orderbook & Tape</span>
                 </div>
-              )}
-              <span className="text-xs px-2.5 py-1 rounded bg-terminal-800 text-cyan-400 border border-terminal-700 font-medium whitespace-nowrap">
-                Pilih Gambar
-              </span>
+                {activePasteTarget === 'orderbook' ? (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/80 font-mono flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></span>
+                    Target Ctrl+V
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-500">Klik utk aktifkan</span>
+                )}
+              </div>
+
+              {/* Card Content */}
+              <div className="py-2">
+                {isOrderbookLoading ? (
+                  <div className="flex items-center gap-2.5 text-cyan-300 py-2">
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <div>
+                      <div className="text-xs font-medium">Gemini Vision AI membaca Orderbook...</div>
+                      <div className="text-[10px] text-slate-400">Ekstraksi Bid/Offer, Lot, Freq & Foreign Flow</div>
+                    </div>
+                  </div>
+                ) : orderbookImagePreview ? (
+                  <div className="flex items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="relative group">
+                        <img
+                          src={orderbookImagePreview}
+                          alt="Preview Orderbook"
+                          className="w-14 h-12 object-cover rounded border border-terminal-700 shadow"
+                        />
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            orderbookFileInputRef.current?.click();
+                          }}
+                          className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded cursor-pointer"
+                          title="Ganti gambar screenshot"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5 text-white" />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-emerald-400 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Orderbook terekstrak</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          Bid/Offer & Microstructure aktif
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          orderbookFileInputRef.current?.click();
+                        }}
+                        className="text-[11px] px-2 py-1 rounded bg-terminal-800 hover:bg-terminal-700 text-slate-300 border border-terminal-700"
+                      >
+                        Ganti
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveOrderbook}
+                        className="p-1 rounded text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 transition-colors"
+                        title="Hapus gambar & teks Orderbook"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2.5 py-1">
+                    <div className="w-8 h-8 rounded-lg bg-cyan-950/50 border border-cyan-800/50 flex items-center justify-center text-cyan-400 shrink-0">
+                      <UploadCloud className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-medium text-slate-200">
+                        Upload Screenshot Orderbook
+                      </div>
+                      <div className="text-[11px] text-slate-400 mt-0.5">
+                        Drop, klik pilih file, atau tekan <kbd className="px-1 py-0.2 bg-terminal-800 rounded text-cyan-300 font-mono text-[9px] border border-terminal-700">Ctrl + V</kbd>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Card Footer Note */}
+              <div className="text-[10px] text-slate-500 pt-1 border-t border-terminal-900 flex items-center justify-between">
+                <span>Bid/Offer Depth & Tape Reading</span>
+                <span className="font-mono text-cyan-400/80">Mode: orderbook</span>
+              </div>
             </div>
           </div>
 
@@ -559,17 +902,16 @@ export default function BroksumModal({
                   </div>
                   <div className="space-y-1.5">
                     {BROKER_GROUPS.FOREIGN
-                      .filter(
-                        (b) =>
-                          !brokerSearch ||
-                          b.code.toLowerCase().includes(brokerSearch.toLowerCase()) ||
-                          b.name.toLowerCase().includes(brokerSearch.toLowerCase()) ||
-                          b.character.toLowerCase().includes(brokerSearch.toLowerCase())
+                      .filter((b) =>
+                        !brokerSearch ||
+                        b.code.toLowerCase().includes(brokerSearch.toLowerCase()) ||
+                        b.name.toLowerCase().includes(brokerSearch.toLowerCase()) ||
+                        b.character.toLowerCase().includes(brokerSearch.toLowerCase())
                       )
                       .map((b) => (
                         <div key={b.code} className="p-1 rounded bg-terminal-950/40 border border-terminal-800/50 hover:border-purple-700/50 transition-colors">
                           <div className="flex items-center justify-between font-mono">
-                            <span className="font-bold text-cyan-300 text-[11px]">{b.code}</span>
+                            <span className="font-bold text-purple-300 text-[11px]">{b.code}</span>
                             {renderBrokerBadge(b.code)}
                           </div>
                           <div className="text-[10px] text-slate-200 font-medium truncate">{b.name}</div>
@@ -592,17 +934,16 @@ export default function BroksumModal({
                   </div>
                   <div className="space-y-1.5">
                     {BROKER_GROUPS.DOMESTIC_PRIVATE
-                      .filter(
-                        (b) =>
-                          !brokerSearch ||
-                          b.code.toLowerCase().includes(brokerSearch.toLowerCase()) ||
-                          b.name.toLowerCase().includes(brokerSearch.toLowerCase()) ||
-                          b.character.toLowerCase().includes(brokerSearch.toLowerCase())
+                      .filter((b) =>
+                        !brokerSearch ||
+                        b.code.toLowerCase().includes(brokerSearch.toLowerCase()) ||
+                        b.name.toLowerCase().includes(brokerSearch.toLowerCase()) ||
+                        b.character.toLowerCase().includes(brokerSearch.toLowerCase())
                       )
                       .map((b) => (
                         <div key={b.code} className="p-1 rounded bg-terminal-950/40 border border-terminal-800/50 hover:border-blue-700/50 transition-colors">
                           <div className="flex items-center justify-between font-mono">
-                            <span className="font-bold text-cyan-300 text-[11px]">{b.code}</span>
+                            <span className="font-bold text-blue-300 text-[11px]">{b.code}</span>
                             {renderBrokerBadge(b.code)}
                           </div>
                           <div className="text-[10px] text-slate-200 font-medium truncate">{b.name}</div>
@@ -625,12 +966,11 @@ export default function BroksumModal({
                   </div>
                   <div className="space-y-1.5">
                     {BROKER_GROUPS.BUMN
-                      .filter(
-                        (b) =>
-                          !brokerSearch ||
-                          b.code.toLowerCase().includes(brokerSearch.toLowerCase()) ||
-                          b.name.toLowerCase().includes(brokerSearch.toLowerCase()) ||
-                          b.character.toLowerCase().includes(brokerSearch.toLowerCase())
+                      .filter((b) =>
+                        !brokerSearch ||
+                        b.code.toLowerCase().includes(brokerSearch.toLowerCase()) ||
+                        b.name.toLowerCase().includes(brokerSearch.toLowerCase()) ||
+                        b.character.toLowerCase().includes(brokerSearch.toLowerCase())
                       )
                       .map((b) => (
                         <div key={b.code} className="p-1 rounded bg-terminal-950/40 border border-terminal-800/50 hover:border-cyan-700/50 transition-colors">
@@ -650,11 +990,19 @@ export default function BroksumModal({
 
           {/* Text Input Area */}
           <div className="relative">
+            <div className="flex items-center justify-between pb-1 text-[11px] text-slate-400">
+              <span className="flex items-center gap-1">
+                <Clipboard className="w-3.5 h-3.5 text-cyan-400" /> Gabungan Teks Terstruktur (Broksum + Orderbook):
+              </span>
+              <span className="text-[10px] text-slate-500 font-mono">
+                {inputText ? `${inputText.split('\n').length} baris` : 'Kosong'}
+              </span>
+            </div>
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Hasil ekstrak OCR screenshot akan tampil di sini, atau Anda bisa paste teks tabel langsung..."
-              rows={5}
+              placeholder="Hasil ekstrak OCR screenshot (Broker Summary & Orderbook) akan otomatis digabungkan di sini, atau Anda bisa paste/edit teks langsung..."
+              rows={4}
               className="w-full p-3 text-xs bg-terminal-950 border border-terminal-700 rounded-lg text-slate-200 font-mono focus:outline-none focus:border-amber-500 transition-colors resize-none placeholder-slate-600"
             />
           </div>
@@ -942,7 +1290,7 @@ export default function BroksumModal({
             <div className="bg-amber-950/30 border border-amber-800/50 rounded-lg p-2.5 flex items-start gap-2 text-xs text-amber-300">
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <p className="text-[11px]">
-                Format belum terdeteksi. Pastikan mencantumkan kode broker 2 huruf (misalnya <code className="text-cyan-300">AK</code>, <code className="text-cyan-300">CC</code>, <code className="text-cyan-300">LG</code>) dan jumlah lot atau nilai transaksi. Atau gunakan fitur upload screenshot di atas.
+                Format belum terdeteksi. Pastikan mencantumkan kode broker 2 huruf (misalnya <code className="text-cyan-300">AK</code>, <code className="text-cyan-300">CC</code>, <code className="text-cyan-300">LG</code>) dan jumlah lot/nilai, atau informasi Orderbook (Total Bid & Offer). Atau gunakan 2 kotak upload screenshot di atas.
               </p>
             </div>
           ) : null}
@@ -955,7 +1303,7 @@ export default function BroksumModal({
                 onClick={handleClear}
                 className="text-rose-400 hover:text-rose-300 flex items-center gap-1 text-[11px]"
               >
-                <Trash2 className="w-3 h-3" /> Bersihkan Input
+                <Trash2 className="w-3 h-3" /> Bersihkan Semua Input
               </button>
             </div>
           )}

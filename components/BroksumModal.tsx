@@ -1,18 +1,23 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   X,
   FileSpreadsheet,
   CheckCircle2,
   Trash2,
-  HelpCircle,
   TrendingUp,
   TrendingDown,
   Layers,
   ArrowRight,
   ShieldCheck,
   AlertTriangle,
+  UploadCloud,
+  Image as ImageIcon,
+  Loader2,
+  Sparkles,
+  Clipboard,
+  RefreshCw,
 } from 'lucide-react';
 import {
   parseBroksumText,
@@ -27,6 +32,7 @@ interface BroksumModalProps {
   broksumText: string;
   onSaveBroksum: (text: string) => void;
   onAnalyzeBroksum?: (prompt: string) => void;
+  onSelectTicker?: (ticker: string) => void;
   currentTicker: string;
 }
 
@@ -45,12 +51,12 @@ Foreign Flow: Net Buy Rp +35,2 Miliar
 Total Traded Value: Rp 145 Miliar`;
 
 const SAMPLE_STOCKBIT_TABLE = `BUYER\tB.Lot\tB.Val\tB.Avg\tSELLER\tS.Lot\tS.Val\tS.Avg
-AK\t45.2K\t28.1B\t6,225\tYP\t52.0K\t32.4B\t6,230
-CC\t32.1K\t19.9B\t6,200\tPD\t25.0K\t15.5B\t6,215
-NI\t18.5K\t11.5B\t6,210\tXC\t12.4K\t7.7B\t6,240
-BK\t12.0K\t7.5B\t6,220\tSQ\t10.5K\t6.5B\t6,235
-KZ\t8.4K\t5.2B\t6,215\tXL\t9.2K\t5.7B\t6,225
-Foreign Flow: Net Buy 35.2B`;
+LG\t236.8K\t77.3B\t3,257\tAK\t280.2K\t92.5B\t3,260
+AZ\t175K\t57.7B\t3,280\tBK\t196.4K\t63.9B\t3,242
+CC\t116.1K\t37.3B\t3,255\tSS\t132K\t42.4B\t3,214
+OD\t61.9K\t20.3B\t3,264\tBB\t129.2K\t41.7B\t3,230
+GR\t60.2K\t19.9B\t3,268\tSQ\t40.6K\t13.4B\t3,269
+Total Traded Value: 307.8B`;
 
 const SAMPLE_DISTRIBUTION = `Top Buyer:
 1. YP: Net Buy 55.000 lot @ 2100 (Value: 11.5 Miliar)
@@ -70,14 +76,95 @@ export default function BroksumModal({
   broksumText,
   onSaveBroksum,
   onAnalyzeBroksum,
+  onSelectTicker,
   currentTicker,
 }: BroksumModalProps) {
   const [inputText, setInputText] = useState(broksumText);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [isOcrLoading, setIsOcrLoading] = useState(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  const [detectedTicker, setDetectedTicker] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
-  // Synchronous live parsing as user types or pastes
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Synchronous live parsing as user types, pastes, or after OCR
   const parsed: ParsedBroksumResult = useMemo(() => {
     return parseBroksumText(inputText, currentTicker);
   }, [inputText, currentTicker]);
+
+  // Synchronize internal state when modal opens with existing text
+  useEffect(() => {
+    if (isOpen) {
+      setInputText(broksumText);
+      setOcrError(null);
+      setDetectedTicker(null);
+    }
+  }, [isOpen, broksumText]);
+
+  // Image processor for file uploads or clipboard pastes
+  const processImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setOcrError('File yang dipilih harus berupa gambar (PNG, JPG, JPEG, WebP).');
+      return;
+    }
+    setOcrError(null);
+    setIsOcrLoading(true);
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const base64 = e.target?.result as string;
+      setImagePreviewUrl(base64);
+
+      try {
+        const res = await fetch('/api/broksum/ocr', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: base64, ticker: currentTicker }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          throw new Error(data.message || 'Gagal membaca gambar');
+        }
+        setInputText(data.text);
+        if (data.detectedTicker && data.detectedTicker !== currentTicker) {
+          setDetectedTicker(data.detectedTicker);
+        }
+      } catch (err: any) {
+        console.error('OCR Error:', err);
+        setOcrError(err.message || 'Gagal mengekstrak data dari screenshot. Coba potong gambar lebih fokus ke tabel.');
+      } finally {
+        setIsOcrLoading(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Clipboard paste listener: enables instant Ctrl + V anywhere inside the modal
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault();
+            processImageFile(file);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => {
+      window.removeEventListener('paste', handlePaste);
+    };
+  }, [isOpen, currentTicker]);
 
   if (!isOpen) return null;
 
@@ -96,7 +183,42 @@ export default function BroksumModal({
 
   const handleClear = () => {
     setInputText('');
+    setImagePreviewUrl(null);
+    setOcrError(null);
+    setDetectedTicker(null);
     onSaveBroksum('');
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processImageFile(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processImageFile(file);
+    }
+  };
+
+  const handleSwitchTicker = (newTicker: string) => {
+    if (onSelectTicker) {
+      onSelectTicker(newTicker);
+      setDetectedTicker(null);
+    }
   };
 
   const getLabelBadge = (label: ParsedBroksumResult['label']) => {
@@ -148,7 +270,7 @@ export default function BroksumModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
       <div className="bg-terminal-900 border border-terminal-700 rounded-xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[92vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between p-4 border-b border-terminal-800">
@@ -160,13 +282,13 @@ export default function BroksumModal({
               <div className="flex items-center gap-2">
                 <h3 className="font-semibold text-slate-100 text-sm">Smart Broker Summary & Bandarmology Parser</h3>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-mono">
-                  OpenAPI 3.1
+                  Vision AI + OpenAPI 3.1
                 </span>
               </div>
               <p className="text-xs text-slate-400">
                 Emiten Aktif: <span className="text-cyan-400 font-mono font-bold">{currentTicker || 'PILIH EMITEN'}</span>
                 {' • '}
-                <span>Mendukung copy-paste tabel Stockbit, IPOT, Mirae, dan format teks bebas</span>
+                <span>Bisa paste screenshot langsung (Ctrl+V) atau copy-paste teks tabel</span>
               </p>
             </div>
           </div>
@@ -180,25 +302,114 @@ export default function BroksumModal({
 
         {/* Modal Body */}
         <div className="p-4 space-y-3.5 overflow-y-auto flex-1">
+          {/* Screenshot Upload / Paste Box */}
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-3.5 transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-between gap-3 ${
+              isDragging
+                ? 'border-cyan-400 bg-cyan-950/30'
+                : 'border-terminal-700 bg-terminal-950/70 hover:border-cyan-500/70 hover:bg-terminal-950'
+            }`}
+          >
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept="image/*"
+              className="hidden"
+            />
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-cyan-950/70 border border-cyan-700/60 flex items-center justify-center text-cyan-400 shrink-0">
+                {isOcrLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <UploadCloud className="w-5 h-5" />
+                )}
+              </div>
+              <div className="text-left">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate-200">
+                    {isOcrLoading ? 'Gemini AI sedang membaca screenshot...' : 'Upload Screenshot Stockbit / Sekuritas'}
+                  </span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800/60 font-mono">
+                    OCR AI
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Tinggal tekan <kbd className="px-1.5 py-0.5 bg-terminal-800 rounded text-cyan-300 font-mono text-[10px] border border-terminal-700">Ctrl + V</kbd> untuk paste gambar langsung, atau klik untuk memilih file.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {imagePreviewUrl && (
+                <div className="relative group">
+                  <img
+                    src={imagePreviewUrl}
+                    alt="Preview Broksum"
+                    className="w-10 h-10 object-cover rounded border border-terminal-700 shadow"
+                  />
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded">
+                    <RefreshCw className="w-3.5 h-3.5 text-white" />
+                  </div>
+                </div>
+              )}
+              <span className="text-xs px-2.5 py-1 rounded bg-terminal-800 text-cyan-400 border border-terminal-700 font-medium whitespace-nowrap">
+                Pilih Gambar
+              </span>
+            </div>
+          </div>
+
+          {/* OCR Error Notification */}
+          {ocrError && (
+            <div className="bg-rose-950/40 border border-rose-800/60 rounded-lg p-2.5 flex items-start gap-2 text-xs text-rose-300 animate-fadeIn">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <p className="text-[11px]">{ocrError}</p>
+            </div>
+          )}
+
+          {/* Ticker Mismatch Suggestion Banner */}
+          {detectedTicker && detectedTicker !== currentTicker && (
+            <div className="bg-cyan-950/60 border border-cyan-700/70 rounded-lg p-2.5 flex items-center justify-between text-xs text-cyan-300 animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>
+                  Screenshot terdeteksi untuk emiten: <strong className="text-white font-mono">{detectedTicker}</strong> (sedang aktif: {currentTicker || 'Belum dipilih'}).
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSwitchTicker(detectedTicker)}
+                className="px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-[11px] transition-colors whitespace-nowrap"
+              >
+                Beralih ke {detectedTicker}
+              </button>
+            </div>
+          )}
+
           {/* Preset Buttons */}
-          <div className="flex items-center justify-between text-xs flex-wrap gap-2">
+          <div className="flex items-center justify-between text-xs flex-wrap gap-2 pt-1">
             <span className="text-slate-400 text-[11px] font-medium flex items-center gap-1">
               <Layers className="w-3.5 h-3.5 text-amber-400" /> Contoh Format Cepat:
             </span>
             <div className="flex items-center gap-1.5 flex-wrap">
               <button
                 type="button"
+                onClick={() => setInputText(SAMPLE_STOCKBIT_TABLE)}
+                className="px-2 py-1 text-[11px] rounded bg-terminal-800 hover:bg-terminal-700 text-cyan-300 border border-terminal-700 transition-colors"
+              >
+                Tabel Stockbit
+              </button>
+              <button
+                type="button"
                 onClick={() => setInputText(SAMPLE_STANDARD)}
                 className="px-2 py-1 text-[11px] rounded bg-terminal-800 hover:bg-terminal-700 text-slate-300 border border-terminal-700 transition-colors"
               >
                 Teks Standar
-              </button>
-              <button
-                type="button"
-                onClick={() => setInputText(SAMPLE_STOCKBIT_TABLE)}
-                className="px-2 py-1 text-[11px] rounded bg-terminal-800 hover:bg-terminal-700 text-cyan-300 border border-terminal-700 transition-colors"
-              >
-                Tabel Stockbit/IPOT
               </button>
               <button
                 type="button"
@@ -215,8 +426,8 @@ export default function BroksumModal({
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Tempel data Broker Summary di sini (teks atau tabel copy-paste dari sekuritas)..."
-              rows={6}
+              placeholder="Hasil ekstrak OCR screenshot akan tampil di sini, atau Anda bisa paste teks tabel langsung..."
+              rows={5}
               className="w-full p-3 text-xs bg-terminal-950 border border-terminal-700 rounded-lg text-slate-200 font-mono focus:outline-none focus:border-amber-500 transition-colors resize-none placeholder-slate-600"
             />
           </div>
@@ -259,17 +470,13 @@ export default function BroksumModal({
                 </div>
 
                 <div className="bg-terminal-900/80 p-2 rounded border border-terminal-800">
-                  <div className="text-[10px] text-slate-400">Net Foreign Flow</div>
-                  <div
-                    className={`text-xs font-bold mt-0.5 ${
-                      (parsed.foreignFlow ?? 0) > 0
-                        ? 'text-emerald-400'
-                        : (parsed.foreignFlow ?? 0) < 0
-                        ? 'text-rose-400'
-                        : 'text-slate-400'
-                    }`}
-                  >
-                    {formatRupiahShort(parsed.foreignFlow)}
+                  <div className="text-[10px] text-slate-400">
+                    {parsed.totalTradedValue ? 'Total Traded Value' : 'Net Foreign Flow'}
+                  </div>
+                  <div className="text-xs font-bold mt-0.5 text-cyan-400">
+                    {parsed.totalTradedValue
+                      ? formatRupiahShort(parsed.totalTradedValue)
+                      : formatRupiahShort(parsed.foreignFlow)}
                   </div>
                 </div>
 
@@ -299,7 +506,7 @@ export default function BroksumModal({
                     <span className="text-[10px] text-slate-400">{formatRupiahShort(parsed.totalBuyerValue)}</span>
                   </div>
                   <div className="space-y-1">
-                    {parsed.topBuyers.slice(0, 4).map((b, i) => (
+                    {parsed.topBuyers.slice(0, 5).map((b, i) => (
                       <div key={i} className="flex items-center justify-between font-mono text-[10px] text-slate-300">
                         <div className="flex items-center gap-1">
                           <span className="font-bold text-slate-100">{b.broker}</span>
@@ -308,6 +515,9 @@ export default function BroksumModal({
                         <div className="text-right">
                           <span>{formatNumberShort(b.lot)} lot</span>
                           <span className="text-slate-400 ml-1.5">{formatRupiahShort(b.value)}</span>
+                          {b.avgPrice > 0 && (
+                            <span className="text-slate-500 ml-1">@{b.avgPrice.toLocaleString('id-ID')}</span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -321,7 +531,7 @@ export default function BroksumModal({
                     <span className="text-[10px] text-slate-400">{formatRupiahShort(parsed.totalSellerValue)}</span>
                   </div>
                   <div className="space-y-1">
-                    {parsed.topSellers.slice(0, 4).map((s, i) => (
+                    {parsed.topSellers.slice(0, 5).map((s, i) => (
                       <div key={i} className="flex items-center justify-between font-mono text-[10px] text-slate-300">
                         <div className="flex items-center gap-1">
                           <span className="font-bold text-slate-100">{s.broker}</span>
@@ -330,6 +540,9 @@ export default function BroksumModal({
                         <div className="text-right">
                           <span>{formatNumberShort(s.lot)} lot</span>
                           <span className="text-slate-400 ml-1.5">{formatRupiahShort(s.value)}</span>
+                          {s.avgPrice > 0 && (
+                            <span className="text-slate-500 ml-1">@{s.avgPrice.toLocaleString('id-ID')}</span>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -356,7 +569,7 @@ export default function BroksumModal({
             <div className="bg-amber-950/30 border border-amber-800/50 rounded-lg p-2.5 flex items-start gap-2 text-xs text-amber-300">
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <p className="text-[11px]">
-                Format belum terdeteksi. Pastikan mencantumkan kode broker 2 huruf (misalnya <code className="text-cyan-300">AK</code>, <code className="text-cyan-300">CC</code>, <code className="text-cyan-300">YP</code>) dan jumlah lot atau nilai transaksi. Gunakan tombol contoh format di atas sebagai panduan.
+                Format belum terdeteksi. Pastikan mencantumkan kode broker 2 huruf (misalnya <code className="text-cyan-300">AK</code>, <code className="text-cyan-300">CC</code>, <code className="text-cyan-300">LG</code>) dan jumlah lot atau nilai transaksi. Atau gunakan fitur upload screenshot di atas.
               </p>
             </div>
           ) : null}

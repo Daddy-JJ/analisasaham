@@ -9,10 +9,10 @@ export interface ChatMessage {
 }
 
 export const SUPPORTED_MODELS = [
-  process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+  process.env.GEMINI_MODEL || 'gemini-3.8-flash',
+  'gemini-3.8-flash',
   'gemini-3.5-flash',
   'gemini-3.1-flash-lite',
-  'gemini-3.8-flash',
 ];
 
 export function getGeminiModel(modelName?: string) {
@@ -21,7 +21,7 @@ export function getGeminiModel(modelName?: string) {
     throw new Error('GEMINI_API_KEY belum dikonfigurasi di Environment Variables (.env.local / Vercel).');
   }
 
-  const selectedModel = modelName || process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+  const selectedModel = modelName || process.env.GEMINI_MODEL || 'gemini-3.8-flash';
   const genAI = new GoogleGenerativeAI(apiKey);
 
   return genAI.getGenerativeModel({

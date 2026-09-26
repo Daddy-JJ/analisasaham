@@ -303,6 +303,7 @@ export default function Home() {
         broksumText={broksumText}
         onSaveBroksum={(text) => setBroksumText(text)}
         onAnalyzeBroksum={(prompt) => handleSendMessage(prompt)}
+        onSelectTicker={handleSelectTicker}
         currentTicker={currentTicker}
       />
 

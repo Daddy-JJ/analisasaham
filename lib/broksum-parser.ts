@@ -38,6 +38,7 @@ export interface ParsedBroksumResult {
   bandarValue5: number; // Top 5 Buyer Value - Top 5 Seller Absolute Value
   foreignFlow: number | null;
   totalTradedValue: number | null;
+  detectedTicker?: string;
   reasons: string[];
   openApiBroksum: Record<string, unknown>;
   openApiBandarmology: Record<string, unknown>;
@@ -146,6 +147,70 @@ export function formatNumberShort(num: number | null | undefined): string {
 }
 
 /**
+ * Helper to dynamically determine which token is Lot and which is Val (supports both Stockbit and IPOT order)
+ */
+function resolveTokensToMetrics(tokens: string[]): { lot: number; val: number; avg: number } {
+  if (tokens.length === 0) return { lot: 0, val: 0, avg: 0 };
+  if (tokens.length === 1) {
+    const n = parseIndoNumber(tokens[0]);
+    return { lot: 0, val: n, avg: 0 };
+  }
+
+  let lot = 0;
+  let val = 0;
+  let avg = 0;
+
+  if (tokens.length >= 3) {
+    avg = parseIndoNumber(tokens[2]);
+    const num0 = parseIndoNumber(tokens[0]);
+    const num1 = parseIndoNumber(tokens[1]);
+
+    const str0 = tokens[0].toLowerCase();
+    const str1 = tokens[1].toLowerCase();
+
+    // Check unit suffixes (e.g. 77.3B is val, 236.8K is lot)
+    const isVal0 = /[bmt]|miliar|milyar|triliun/i.test(str0) || num0 > 1e8;
+    const isLot0 = /[k]|ribu|lot/i.test(str0);
+
+    const isVal1 = /[bmt]|miliar|milyar|triliun/i.test(str1) || num1 > 1e8;
+    const isLot1 = /[k]|ribu|lot/i.test(str1);
+
+    if (isVal0 && !isLot0 && (isLot1 || !isVal1)) {
+      val = num0;
+      lot = num1;
+    } else if (isVal1 && !isLot1 && (isLot0 || !isVal0)) {
+      val = num1;
+      lot = num0;
+    } else if (num0 > num1 * 100) {
+      val = num0;
+      lot = num1;
+    } else {
+      lot = num0;
+      val = num1;
+    }
+
+    if (!avg && lot > 0 && val > 0) {
+      avg = Math.round(val / (lot * 100));
+    }
+  } else if (tokens.length === 2) {
+    const num0 = parseIndoNumber(tokens[0]);
+    const num1 = parseIndoNumber(tokens[1]);
+    if (num0 > num1 * 100) {
+      val = num0;
+      lot = num1;
+    } else {
+      lot = num0;
+      val = num1;
+    }
+    if (lot > 0 && val > 0) {
+      avg = Math.round(val / (lot * 100));
+    }
+  }
+
+  return { lot, val, avg };
+}
+
+/**
  * Main parser function: takes raw user input and returns structured Broker Summary & Bandarmology data.
  */
 export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult {
@@ -154,13 +219,28 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
     return createEmptyBroksumResult(ticker);
   }
 
-  const lines = cleanText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  // Pre-process lines: if markdown table line, replace pipes '|' with spaces/tabs
+  // and filter out markdown header separators like | :--- | :--- |
+  const lines = cleanText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .filter((l) => !/^\|?[:\-\s\t|]+\|?$/.test(l))
+    .map((l) => l.replace(/\|/g, ' \t ').trim());
 
   const buyers: BrokerItem[] = [];
   const sellers: BrokerItem[] = [];
   let foreignFlow: number | null = null;
   let totalTradedValue: number | null = null;
   let dateStr: string | null = null;
+  let detectedTicker = ticker || '';
+
+  // Extract Ticker from header if present (e.g. "Emiten: ANTM" or "+ ANTM" or "Ticker: ANTM")
+  const tickerMatch = cleanText.match(/(?:emiten|ticker|saham)\s*[:=]?\s*([A-Za-z]{4})/i) ||
+                      cleanText.match(/^\s*\+\s*([A-Za-z]{4})\b/m);
+  if (tickerMatch) {
+    detectedTicker = tickerMatch[1].toUpperCase();
+  }
 
   let currentSection: 'BUY' | 'SELL' | null = null;
 
@@ -187,7 +267,7 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
 
     // 3. Total Traded Value / Turnover
     const totalValMatch = line.match(
-      /(?:total\s*(?:traded\s*value|turnover|transaksi)|turnover|nilai\s*transaksi)\s*[:=]?\s*(?:Rp\.?\s*)?([\d.,]+\s*(?:[A-Za-z]+)?)/i
+      /(?:total\s*(?:traded\s*value|turnover|transaksi)|turnover|nilai\s*transaksi|net\s*value)\s*[:=]?\s*(?:Rp\.?\s*)?([\d.,]+\s*(?:[A-Za-z]+)?)/i
     );
     if (totalValMatch) {
       totalTradedValue = parseIndoNumber(totalValMatch[1]);
@@ -206,7 +286,7 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
 
     // 5. Two-column tabular copy-paste (Stockbit / IPOT / Mirae table)
     const tokens = line.split(/[\t\s]+/).filter(Boolean);
-    if (tokens.some((t) => /^(?:BUYER|SELLER|B\.LOT|S\.LOT|B\.VAL|S\.VAL|BROKER)$/i.test(t))) {
+    if (tokens.some((t) => /^(?:BUYER|SELLER|B\.LOT|S\.LOT|B\.VAL|S\.VAL|B\.AVG|S\.AVG|BROKER|BY|SL)$/i.test(t))) {
       continue;
     }
 
@@ -226,38 +306,26 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
         const side2 = tokens.slice(secondBrokerIdx);
 
         const bCode = side1[0].toUpperCase();
-        const bLot = parseIndoNumber(side1[1]);
-        const bVal = parseIndoNumber(side1[2]);
-        const bAvg = side1[3]
-          ? parseIndoNumber(side1[3])
-          : bLot > 0 && bVal > 0
-          ? Math.round(bVal / (bLot * 100))
-          : 0;
+        const bMetrics = resolveTokensToMetrics(side1.slice(1));
 
         buyers.push({
           broker: bCode,
           side: 'BUY',
-          lot: bLot,
-          value: bVal,
-          avgPrice: bAvg,
+          lot: bMetrics.lot,
+          value: bMetrics.val,
+          avgPrice: bMetrics.avg,
           category: getBrokerCategory(bCode),
         });
 
         const sCode = side2[0].toUpperCase();
-        const sLot = Math.abs(parseIndoNumber(side2[1]));
-        const sVal = Math.abs(parseIndoNumber(side2[2]));
-        const sAvg = side2[3]
-          ? parseIndoNumber(side2[3])
-          : sLot > 0 && sVal > 0
-          ? Math.round(sVal / (sLot * 100))
-          : 0;
+        const sMetrics = resolveTokensToMetrics(side2.slice(1));
 
         sellers.push({
           broker: sCode,
           side: 'SELL',
-          lot: sLot,
-          value: sVal,
-          avgPrice: sAvg,
+          lot: sMetrics.lot,
+          value: sMetrics.val,
+          avgPrice: sMetrics.avg,
           category: getBrokerCategory(sCode),
         });
         continue;
@@ -309,16 +377,14 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
       const code = tokens[0].replace(/[^A-Za-z]/g, '').toUpperCase();
       if (code.length === 2 && /^[A-Z]{2}$/.test(code)) {
         const side: 'BUY' | 'SELL' = currentSection === 'SELL' || /sell|jual/i.test(line) ? 'SELL' : 'BUY';
-        const lot = Math.abs(parseIndoNumber(tokens[1]));
-        const val = tokens[2] ? Math.abs(parseIndoNumber(tokens[2])) : 0;
-        const avg = tokens[3] ? parseIndoNumber(tokens[3]) : lot > 0 && val > 0 ? Math.round(val / (lot * 100)) : 0;
+        const metrics = resolveTokensToMetrics(tokens.slice(1));
 
         const item: BrokerItem = {
           broker: code,
           side,
-          lot,
-          value: val,
-          avgPrice: avg,
+          lot: metrics.lot,
+          value: metrics.val,
+          avgPrice: metrics.avg,
           category: getBrokerCategory(code),
         };
 
@@ -524,7 +590,8 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
 
   return {
     hasData: true,
-    ticker: ticker || '',
+    ticker: detectedTicker || ticker || '',
+    detectedTicker: detectedTicker || ticker || '',
     date: dateStr || new Date().toISOString().split('T')[0],
     startDate: dateStr || null,
     endDate: dateStr || null,
@@ -552,6 +619,7 @@ function createEmptyBroksumResult(ticker: string): ParsedBroksumResult {
   return {
     hasData: false,
     ticker,
+    detectedTicker: ticker,
     date: new Date().toISOString().split('T')[0],
     startDate: null,
     endDate: null,

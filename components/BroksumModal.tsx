@@ -18,13 +18,22 @@ import {
   Sparkles,
   Clipboard,
   RefreshCw,
+  BookOpen,
+  Search,
 } from 'lucide-react';
 import {
   parseBroksumText,
   formatRupiahShort,
   formatNumberShort,
   ParsedBroksumResult,
+  BrokerItem,
 } from '@/lib/broksum-parser';
+import {
+  BROKER_MASTER_LIST,
+  BROKER_GROUPS,
+  getBrokerInfo,
+  BrokerDefinition,
+} from '@/lib/broker-reference';
 
 interface BroksumModalProps {
   isOpen: boolean;
@@ -85,6 +94,8 @@ export default function BroksumModal({
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [detectedTicker, setDetectedTicker] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [showBrokerRef, setShowBrokerRef] = useState(false);
+  const [brokerSearch, setBrokerSearch] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -256,17 +267,43 @@ export default function BroksumModal({
     }
   };
 
-  const getCategoryBadge = (cat: string) => {
-    if (cat === 'FOREIGN_INST') {
-      return <span className="text-[10px] px-1 py-0.2 rounded bg-purple-950/60 text-purple-300 border border-purple-800/60">Asing</span>;
+  const renderBrokerBadge = (brokerCode: string, item?: BrokerItem) => {
+    const info = getBrokerInfo(brokerCode);
+    const classification = item?.classification || info?.classification;
+    const isRetail =
+      item?.character?.toLowerCase().includes('retail') ||
+      item?.category === 'RETAIL' ||
+      info?.isRetailHeavy;
+    const name = item?.brokerName || info?.name || brokerCode;
+    const character = item?.character || info?.character || '';
+    const tooltip = `${brokerCode} — ${name}${character ? ` (${character})` : ''}`;
+
+    let badgeClass = 'bg-slate-800 text-slate-300 border-slate-700';
+    let label = 'Other';
+
+    if (classification === 'BUMN') {
+      badgeClass = 'bg-cyan-950/70 text-cyan-300 border-cyan-700/60';
+      label = 'BUMN';
+    } else if (classification === 'FOREIGN') {
+      badgeClass = 'bg-purple-950/70 text-purple-300 border-purple-700/60';
+      label = 'Asing';
+    } else if (classification === 'DOMESTIC_PRIVATE') {
+      badgeClass = 'bg-blue-950/70 text-blue-300 border-blue-700/60';
+      label = 'Lokal';
     }
-    if (cat === 'LOCAL_INST') {
-      return <span className="text-[10px] px-1 py-0.2 rounded bg-blue-950/60 text-blue-300 border border-blue-800/60">Institusi</span>;
-    }
-    if (cat === 'RETAIL') {
-      return <span className="text-[10px] px-1 py-0.2 rounded bg-amber-950/60 text-amber-300 border border-amber-800/60">Ritel</span>;
-    }
-    return null;
+
+    return (
+      <span title={tooltip} className="inline-flex items-center gap-1 cursor-help">
+        <span className={`text-[9px] px-1 py-0.2 rounded font-medium border ${badgeClass}`}>
+          {label}
+        </span>
+        {isRetail && (
+          <span className="text-[9px] px-1 py-0.2 rounded font-medium bg-amber-950/70 text-amber-300 border border-amber-800/60">
+            Ritel
+          </span>
+        )}
+      </span>
+    );
   };
 
   return (
@@ -394,9 +431,21 @@ export default function BroksumModal({
           {/* Preset Buttons */}
           <div className="flex items-center justify-between text-xs flex-wrap gap-2 pt-1">
             <span className="text-slate-400 text-[11px] font-medium flex items-center gap-1">
-              <Layers className="w-3.5 h-3.5 text-amber-400" /> Contoh Format Cepat:
+              <Layers className="w-3.5 h-3.5 text-amber-400" /> Contoh & Referensi:
             </span>
             <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setShowBrokerRef(!showBrokerRef)}
+                className={`px-2 py-1 text-[11px] rounded border transition-colors flex items-center gap-1 ${
+                  showBrokerRef
+                    ? 'bg-amber-950/70 text-amber-300 border-amber-600/70 font-semibold'
+                    : 'bg-terminal-800 hover:bg-terminal-700 text-amber-400 border-terminal-700'
+                }`}
+              >
+                <BookOpen className="w-3 h-3" />
+                <span>{showBrokerRef ? 'Tutup Klasifikasi' : 'Referensi Broker IDX'}</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setInputText(SAMPLE_STOCKBIT_TABLE)}
@@ -420,6 +469,138 @@ export default function BroksumModal({
               </button>
             </div>
           </div>
+
+          {/* Collapsible Broker Reference Master Drawer */}
+          {showBrokerRef && (
+            <div className="bg-terminal-950 border border-cyan-800/60 rounded-xl p-3 space-y-2.5 animate-fadeIn shadow-xl">
+              <div className="flex items-center justify-between gap-2 border-b border-terminal-800 pb-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded bg-cyan-950 text-cyan-400 border border-cyan-800/60">
+                    <BookOpen className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-semibold text-slate-100">
+                      Master Klasifikasi & Karakter Broker IDX
+                    </h4>
+                    <p className="text-[10px] text-slate-400">
+                      Foreign / foreign-affiliated • Local / swasta domestik • BUMN / state-linked
+                    </p>
+                  </div>
+                </div>
+                <div className="relative w-44 sm:w-56">
+                  <Search className="w-3.5 h-3.5 absolute left-2 top-2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={brokerSearch}
+                    onChange={(e) => setBrokerSearch(e.target.value)}
+                    placeholder="Cari kode atau nama broker..."
+                    className="w-full pl-7 pr-2 py-1 text-[11px] bg-terminal-900 border border-terminal-750 rounded text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 max-h-56 overflow-y-auto pr-1">
+                {/* 1. Foreign / foreign-affiliated */}
+                <div className="bg-terminal-900/60 rounded-lg p-2.5 border border-purple-900/40">
+                  <div className="flex items-center justify-between text-purple-300 font-semibold mb-2 border-b border-purple-900/50 pb-1 text-[11px]">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                      Foreign / Foreign-Affiliated
+                    </span>
+                    <span className="text-[10px] text-purple-400/80 font-mono">
+                      {BROKER_GROUPS.FOREIGN.length}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {BROKER_GROUPS.FOREIGN
+                      .filter(
+                        (b) =>
+                          !brokerSearch ||
+                          b.code.toLowerCase().includes(brokerSearch.toLowerCase()) ||
+                          b.name.toLowerCase().includes(brokerSearch.toLowerCase()) ||
+                          b.character.toLowerCase().includes(brokerSearch.toLowerCase())
+                      )
+                      .map((b) => (
+                        <div key={b.code} className="p-1 rounded bg-terminal-950/40 border border-terminal-800/50 hover:border-purple-700/50 transition-colors">
+                          <div className="flex items-center justify-between font-mono">
+                            <span className="font-bold text-cyan-300 text-[11px]">{b.code}</span>
+                            {renderBrokerBadge(b.code)}
+                          </div>
+                          <div className="text-[10px] text-slate-200 font-medium truncate">{b.name}</div>
+                          <div className="text-[9px] text-slate-400 italic line-clamp-1">{b.character}</div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+
+                {/* 2. Local / swasta domestik */}
+                <div className="bg-terminal-900/60 rounded-lg p-2.5 border border-blue-900/40">
+                  <div className="flex items-center justify-between text-blue-300 font-semibold mb-2 border-b border-blue-900/50 pb-1 text-[11px]">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                      Local / Swasta Domestik
+                    </span>
+                    <span className="text-[10px] text-blue-400/80 font-mono">
+                      {BROKER_GROUPS.DOMESTIC_PRIVATE.length}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {BROKER_GROUPS.DOMESTIC_PRIVATE
+                      .filter(
+                        (b) =>
+                          !brokerSearch ||
+                          b.code.toLowerCase().includes(brokerSearch.toLowerCase()) ||
+                          b.name.toLowerCase().includes(brokerSearch.toLowerCase()) ||
+                          b.character.toLowerCase().includes(brokerSearch.toLowerCase())
+                      )
+                      .map((b) => (
+                        <div key={b.code} className="p-1 rounded bg-terminal-950/40 border border-terminal-800/50 hover:border-blue-700/50 transition-colors">
+                          <div className="flex items-center justify-between font-mono">
+                            <span className="font-bold text-cyan-300 text-[11px]">{b.code}</span>
+                            {renderBrokerBadge(b.code)}
+                          </div>
+                          <div className="text-[10px] text-slate-200 font-medium truncate">{b.name}</div>
+                          <div className="text-[9px] text-slate-400 italic line-clamp-1">{b.character}</div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+
+                {/* 3. BUMN / state-linked */}
+                <div className="bg-terminal-900/60 rounded-lg p-2.5 border border-cyan-900/40">
+                  <div className="flex items-center justify-between text-cyan-300 font-semibold mb-2 border-b border-cyan-900/50 pb-1 text-[11px]">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                      BUMN / State-Linked
+                    </span>
+                    <span className="text-[10px] text-cyan-400/80 font-mono">
+                      {BROKER_GROUPS.BUMN.length}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {BROKER_GROUPS.BUMN
+                      .filter(
+                        (b) =>
+                          !brokerSearch ||
+                          b.code.toLowerCase().includes(brokerSearch.toLowerCase()) ||
+                          b.name.toLowerCase().includes(brokerSearch.toLowerCase()) ||
+                          b.character.toLowerCase().includes(brokerSearch.toLowerCase())
+                      )
+                      .map((b) => (
+                        <div key={b.code} className="p-1 rounded bg-terminal-950/40 border border-terminal-800/50 hover:border-cyan-700/50 transition-colors">
+                          <div className="flex items-center justify-between font-mono">
+                            <span className="font-bold text-cyan-300 text-[11px]">{b.code}</span>
+                            {renderBrokerBadge(b.code)}
+                          </div>
+                          <div className="text-[10px] text-slate-200 font-medium truncate">{b.name}</div>
+                          <div className="text-[9px] text-slate-400 italic line-clamp-1">{b.character}</div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Text Input Area */}
           <div className="relative">
@@ -509,8 +690,13 @@ export default function BroksumModal({
                     {parsed.topBuyers.slice(0, 5).map((b, i) => (
                       <div key={i} className="flex items-center justify-between font-mono text-[10px] text-slate-300">
                         <div className="flex items-center gap-1">
-                          <span className="font-bold text-slate-100">{b.broker}</span>
-                          {getCategoryBadge(b.category)}
+                          <span
+                            className="font-bold text-slate-100 hover:text-cyan-300 cursor-help transition-colors"
+                            title={b.brokerName ? `${b.broker} — ${b.brokerName}${b.character ? ` (${b.character})` : ''}` : b.broker}
+                          >
+                            {b.broker}
+                          </span>
+                          {renderBrokerBadge(b.broker, b)}
                         </div>
                         <div className="text-right">
                           <span>{formatNumberShort(b.lot)} lot</span>
@@ -534,8 +720,13 @@ export default function BroksumModal({
                     {parsed.topSellers.slice(0, 5).map((s, i) => (
                       <div key={i} className="flex items-center justify-between font-mono text-[10px] text-slate-300">
                         <div className="flex items-center gap-1">
-                          <span className="font-bold text-slate-100">{s.broker}</span>
-                          {getCategoryBadge(s.category)}
+                          <span
+                            className="font-bold text-slate-100 hover:text-cyan-300 cursor-help transition-colors"
+                            title={s.brokerName ? `${s.broker} — ${s.brokerName}${s.character ? ` (${s.character})` : ''}` : s.broker}
+                          >
+                            {s.broker}
+                          </span>
+                          {renderBrokerBadge(s.broker, s)}
                         </div>
                         <div className="text-right">
                           <span>{formatNumberShort(s.lot)} lot</span>

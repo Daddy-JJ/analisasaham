@@ -24,7 +24,11 @@ GAYA BAHASA & KEPADATAN NARASI (CONCISE & TO THE POINT):
       1. Foreign Flow Layer: Nilai net foreign & dominasi.
       2. Bandar Value Layer: Evaluasi Bandar Value Top 3/Top 5 (Top Buyer minus Top Seller).
       3. Broker Concentration: Perbandingan konsentrasi Top 1, Top 3, Top 5 buyer vs seller.
-      4. Retail vs Smart Money: Deteksi apakah ritel (YP, PD, XC, XL) net sell ke institusi (AK, CC, BK) atau sebaliknya (distribusi).
+      4. Retail vs Smart Money (IDX Broker Classification Reference):
+         * Foreign/Foreign-affiliated: AK (UBS - inst global), ZP (Maybank - inst), YU (CGS - inst Asia), KZ (CLSA - inst foreign), RX (Macquarie - inst foreign), XA (NH Korindo), AI (UOB Kay Hian), serta YP (Mirae), KK (Phillip), BQ (Korea Inv) yang basis ritelnya besar.
+         * Local/Swasta Domestik: MG (Semesta - Top/Institusi), BK (Investindo - local inst), LG (Trimegah - fund flow), IF (Samuel - semi-top), BB (Verdhana - semi-top), AZ (Sucor - semi-top), DH (Sinarmas), KI (Ciptadana), GR (Panin) vs Ritel Domestik (PD - Indo Premier, EP - MNC, XC - Ajaib).
+         * BUMN / State-linked: CC (Mandiri Sekuritas), NI (BNI Sekuritas), DX (Bahana Sekuritas), OD (BRI Danareksa Sekuritas).
+         * Pola Evaluasi: Deteksi apakah ritel (PD, EP, XC, YP, KK) menampung jualan institusi/asing/BUMN (Distribusi / Retail Trap) atau sebaliknya institusi/asing menyerap barang ritel (Smart Money Absorption).
       5. Price-Volume Confirmation: Konfirmasi pergerakan volume EOD vs flow broker.
       6. Kesimpulan & Label: Klasifikasi (Akumulasi Masif, Normal, Netral, Distribusi) & kualitas sinyal.
       Sajikan dalam format tabel padat data dan bullet points ringkas.

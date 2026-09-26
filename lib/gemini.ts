@@ -80,11 +80,17 @@ export function buildContextPrompt(
       }
       context += `\nTop Net Buyer:\n`;
       parsed.topBuyers.forEach((b, i) => {
-        context += `${i + 1}. ${b.broker} [${b.category}]: ${b.lot.toLocaleString('id-ID')} lot @ Avg ${b.avgPrice} (Nilai: ${formatRupiahShort(b.value)})\n`;
+        const meta = b.brokerName
+          ? ` (${b.brokerName} | ${b.classificationLabel || b.category} - ${b.character || ''})`
+          : ` [${b.category}]`;
+        context += `${i + 1}. ${b.broker}${meta}: ${b.lot.toLocaleString('id-ID')} lot @ Avg ${b.avgPrice} (Nilai: ${formatRupiahShort(b.value)})\n`;
       });
       context += `\nTop Net Seller:\n`;
       parsed.topSellers.forEach((s, i) => {
-        context += `${i + 1}. ${s.broker} [${s.category}]: ${s.lot.toLocaleString('id-ID')} lot @ Avg ${s.avgPrice} (Nilai: ${formatRupiahShort(s.value)})\n`;
+        const meta = s.brokerName
+          ? ` (${s.brokerName} | ${s.classificationLabel || s.category} - ${s.character || ''})`
+          : ` [${s.category}]`;
+        context += `${i + 1}. ${s.broker}${meta}: ${s.lot.toLocaleString('id-ID')} lot @ Avg ${s.avgPrice} (Nilai: ${formatRupiahShort(s.value)})\n`;
       });
       if (parsed.reasons.length > 0) {
         context += `\nFakta Analitik Bandarmology:\n`;

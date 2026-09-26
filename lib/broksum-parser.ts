@@ -3,6 +3,15 @@
  * Conforms to OpenAPI 3.1.0 schemas: BroksumGenericResponse & BandarmologyGenericResponse
  */
 
+import {
+  BrokerPracticalClass,
+  getBrokerInfo,
+  getBrokerClassification,
+  isBrokerRetailHeavy,
+  isBrokerInstitutional,
+  getBrokerCategoryLegacy,
+} from './broker-reference';
+
 export interface BrokerItem {
   broker: string;
   side: 'BUY' | 'SELL';
@@ -10,6 +19,10 @@ export interface BrokerItem {
   value: number; // In Rupiah (IDR)
   avgPrice: number;
   category: 'FOREIGN_INST' | 'LOCAL_INST' | 'RETAIL' | 'OTHER';
+  brokerName?: string;
+  classification?: BrokerPracticalClass;
+  classificationLabel?: string;
+  character?: string;
 }
 
 export interface ConcentrationStats {
@@ -44,25 +57,8 @@ export interface ParsedBroksumResult {
   openApiBandarmology: Record<string, unknown>;
 }
 
-// Known Broker Classifications in Indonesian Stock Exchange (IDX)
-const FOREIGN_BROKERS = new Set([
-  'AK', 'BK', 'CS', 'MS', 'ZP', 'KZ', 'CG', 'RX', 'DB', 'YU', 'ML', 'GW', 'BS', 'CC'
-]);
-
-const STATE_LOCAL_INST_BROKERS = new Set([
-  'NI', 'OD', 'DX', 'LG', 'TP', 'LS', 'SF'
-]);
-
-const RETAIL_BROKERS = new Set([
-  'YP', 'PD', 'XC', 'XL', 'SQ', 'CP', 'EP', 'AZ', 'KK', 'DR', 'GR', 'HD', 'BQ', 'HP', 'MG', 'XA'
-]);
-
 export function getBrokerCategory(code: string): 'FOREIGN_INST' | 'LOCAL_INST' | 'RETAIL' | 'OTHER' {
-  const upper = code.toUpperCase();
-  if (FOREIGN_BROKERS.has(upper)) return 'FOREIGN_INST';
-  if (STATE_LOCAL_INST_BROKERS.has(upper)) return 'LOCAL_INST';
-  if (RETAIL_BROKERS.has(upper)) return 'RETAIL';
-  return 'OTHER';
+  return getBrokerCategoryLegacy(code);
 }
 
 export function parseIndoNumber(raw: string | number | undefined | null): number {
@@ -210,6 +206,29 @@ function resolveTokensToMetrics(tokens: string[]): { lot: number; val: number; a
   return { lot, val, avg };
 }
 
+function buildBrokerItem(
+  code: string,
+  side: 'BUY' | 'SELL',
+  lot: number,
+  value: number,
+  avgPrice: number
+): BrokerItem {
+  const upper = code.replace(/[^A-Za-z]/g, '').toUpperCase();
+  const info = getBrokerInfo(upper);
+  return {
+    broker: upper,
+    side,
+    lot,
+    value,
+    avgPrice,
+    category: getBrokerCategoryLegacy(upper),
+    brokerName: info?.name,
+    classification: info?.classification,
+    classificationLabel: info?.classificationLabel,
+    character: info?.character,
+  };
+}
+
 /**
  * Main parser function: takes raw user input and returns structured Broker Summary & Bandarmology data.
  */
@@ -307,27 +326,11 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
 
         const bCode = side1[0].toUpperCase();
         const bMetrics = resolveTokensToMetrics(side1.slice(1));
-
-        buyers.push({
-          broker: bCode,
-          side: 'BUY',
-          lot: bMetrics.lot,
-          value: bMetrics.val,
-          avgPrice: bMetrics.avg,
-          category: getBrokerCategory(bCode),
-        });
+        buyers.push(buildBrokerItem(bCode, 'BUY', bMetrics.lot, bMetrics.val, bMetrics.avg));
 
         const sCode = side2[0].toUpperCase();
         const sMetrics = resolveTokensToMetrics(side2.slice(1));
-
-        sellers.push({
-          broker: sCode,
-          side: 'SELL',
-          lot: sMetrics.lot,
-          value: sMetrics.val,
-          avgPrice: sMetrics.avg,
-          category: getBrokerCategory(sCode),
-        });
+        sellers.push(buildBrokerItem(sCode, 'SELL', sMetrics.lot, sMetrics.val, sMetrics.avg));
         continue;
       }
     }
@@ -355,15 +358,7 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
         avg = Math.round(val / (lot * 100));
       }
 
-      const item: BrokerItem = {
-        broker: code,
-        side,
-        lot,
-        value: val,
-        avgPrice: avg,
-        category: getBrokerCategory(code),
-      };
-
+      const item = buildBrokerItem(code, side, lot, val, avg);
       if (side === 'BUY') {
         buyers.push(item);
       } else {
@@ -379,15 +374,7 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
         const side: 'BUY' | 'SELL' = currentSection === 'SELL' || /sell|jual/i.test(line) ? 'SELL' : 'BUY';
         const metrics = resolveTokensToMetrics(tokens.slice(1));
 
-        const item: BrokerItem = {
-          broker: code,
-          side,
-          lot: metrics.lot,
-          value: metrics.val,
-          avgPrice: metrics.avg,
-          category: getBrokerCategory(code),
-        };
-
+        const item = buildBrokerItem(code, side, metrics.lot, metrics.val, metrics.avg);
         if (side === 'BUY') buyers.push(item);
         else sellers.push(item);
       }
@@ -405,7 +392,14 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
         const avg = totalLot > 0 ? Math.round(totalVal / (totalLot * 100)) : prev.avgPrice;
         map.set(item.broker, { ...prev, lot: totalLot, value: totalVal, avgPrice: avg });
       } else {
-        map.set(item.broker, { ...item });
+        const info = getBrokerInfo(item.broker);
+        map.set(item.broker, {
+          ...item,
+          brokerName: info?.name || item.brokerName,
+          classification: info?.classification || item.classification,
+          classificationLabel: info?.classificationLabel || item.classificationLabel,
+          character: info?.character || item.character,
+        });
       }
     }
     return Array.from(map.values()).sort((a, b) => b.value - a.value);
@@ -449,13 +443,13 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
   const top5SellerVal = aggSellers.slice(0, 5).reduce((s, b) => s + b.value, 0);
   const bandarValue5 = top5BuyerVal - top5SellerVal;
 
-  // Retail vs Smart Money (Institusi / Asing)
-  const retailBuyers = aggBuyers.filter((b) => b.category === 'RETAIL');
-  const retailSellers = aggSellers.filter((s) => s.category === 'RETAIL');
+  // Retail vs Smart Money (Institusi / Asing / BUMN)
+  const retailBuyers = aggBuyers.filter((b) => isBrokerRetailHeavy(b.broker));
+  const retailSellers = aggSellers.filter((s) => isBrokerRetailHeavy(s.broker));
   const retailNetBuyVal = retailBuyers.reduce((s, b) => s + b.value, 0) - retailSellers.reduce((s, b) => s + b.value, 0);
 
-  const instBuyers = aggBuyers.filter((b) => b.category === 'FOREIGN_INST' || b.category === 'LOCAL_INST');
-  const instSellers = aggSellers.filter((s) => s.category === 'FOREIGN_INST' || s.category === 'LOCAL_INST');
+  const instBuyers = aggBuyers.filter((b) => isBrokerInstitutional(b.broker));
+  const instSellers = aggSellers.filter((s) => isBrokerInstitutional(s.broker));
   const instNetBuyVal = instBuyers.reduce((s, b) => s + b.value, 0) - instSellers.reduce((s, b) => s + b.value, 0);
 
   // Scoring (-100 to +100)
@@ -519,16 +513,16 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
     );
   }
   if (instNetBuyVal > 0 && retailNetBuyVal < 0) {
+    const instNames = instBuyers.map((b) => b.brokerName ? `${b.broker} (${b.brokerName})` : b.broker).join(', ');
+    const retailNames = retailSellers.map((s) => s.brokerName ? `${s.broker} (${s.brokerName})` : s.broker).join(', ');
     reasons.push(
-      `Pola Smart Money Absorption: Broker institusi/asing (${instBuyers
-        .map((b) => b.broker)
-        .join(', ')}) menampung barang dari broker ritel (${retailSellers.map((s) => s.broker).join(', ')}).`
+      `Pola Smart Money Absorption: Broker institusi/asing/BUMN (${instNames}) menampung barang dari broker ritel (${retailNames}).`
     );
   } else if (instNetBuyVal < 0 && retailNetBuyVal > 0) {
+    const instNames = instSellers.map((s) => s.brokerName ? `${s.broker} (${s.brokerName})` : s.broker).join(', ');
+    const retailNames = retailBuyers.map((b) => b.brokerName ? `${b.broker} (${b.brokerName})` : b.broker).join(', ');
     reasons.push(
-      `Pola Retail Trap/Distribusi: Broker institusi melakukan aksi jual yang ditampung oleh broker ritel (${retailBuyers
-        .map((b) => b.broker)
-        .join(', ')}).`
+      `Pola Retail Trap/Distribusi: Broker institusi/asing melakukan aksi jual (${instNames}) yang ditampung oleh broker ritel (${retailNames}).`
     );
   }
   if (foreignFlow !== null && foreignFlow !== 0) {
@@ -562,8 +556,30 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
       topSellers: aggSellers.slice(0, 5),
     },
     records: [
-      ...aggBuyers.map((b) => ({ broker: b.broker, type: 'BUY', lot: b.lot, value: b.value, avgPrice: b.avgPrice, category: b.category })),
-      ...aggSellers.map((s) => ({ broker: s.broker, type: 'SELL', lot: s.lot, value: s.value, avgPrice: s.avgPrice, category: s.category })),
+      ...aggBuyers.map((b) => ({
+        broker: b.broker,
+        brokerName: b.brokerName,
+        classification: b.classification,
+        classificationLabel: b.classificationLabel,
+        character: b.character,
+        type: 'BUY',
+        lot: b.lot,
+        value: b.value,
+        avgPrice: b.avgPrice,
+        category: b.category,
+      })),
+      ...aggSellers.map((s) => ({
+        broker: s.broker,
+        brokerName: s.brokerName,
+        classification: s.classification,
+        classificationLabel: s.classificationLabel,
+        character: s.character,
+        type: 'SELL',
+        lot: s.lot,
+        value: s.value,
+        avgPrice: s.avgPrice,
+        category: s.category,
+      })),
     ],
     reasons,
   };

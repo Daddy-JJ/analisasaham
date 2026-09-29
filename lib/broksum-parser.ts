@@ -97,6 +97,31 @@ export function getBrokerCategory(code: string): 'FOREIGN_INST' | 'LOCAL_INST' |
   return getBrokerCategoryLegacy(code);
 }
 
+/**
+ * Formats a number with dot (.) as thousand separator (Indonesian standard formatting)
+ * Example: 12231 -> "12.231", 2029 -> "2.029"
+ */
+export function formatDotNumber(
+  num: number | null | undefined,
+  maxDecimals = 0
+): string {
+  if (num === null || num === undefined || isNaN(num)) return '0';
+  const sign = num < 0 ? '-' : '';
+  const abs = Math.abs(num);
+
+  if (maxDecimals > 0) {
+    const fixed = abs.toFixed(maxDecimals);
+    const [intPart, decPart] = fixed.split('.');
+    const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return decPart && parseInt(decPart) > 0
+      ? `${sign}${formattedInt},${decPart}`
+      : `${sign}${formattedInt}`;
+  }
+
+  const rounded = Math.round(abs);
+  return sign + rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
 export function parseIndoNumber(raw: string | number | undefined | null): number {
   if (raw === undefined || raw === null || raw === '') return 0;
   if (typeof raw === 'number') return raw;
@@ -117,13 +142,16 @@ export function parseIndoNumber(raw: string | number | undefined | null): number
   if (/(?:t(?:riliun)?)$/i.test(s)) {
     multiplier = 1e12;
     s = s.replace(/(?:t(?:riliun)?)$/i, '').trim();
-  } else if (/(?:m(?:iliar|ilyar)?|b(?:illion)?)$/i.test(s)) {
+  } else if (/(?:miliar|milyar|b(?:illion)?)$/i.test(s)) {
+    // 'B' or spelled-out 'miliar'/'milyar' is 1e9 (Billion / Miliar IDR)
     multiplier = 1e9;
-    s = s.replace(/(?:m(?:iliar|ilyar)?|b(?:illion)?)$/i, '').trim();
-  } else if (/(?:juta|jt|mio)$/i.test(s)) {
+    s = s.replace(/(?:miliar|milyar|b(?:illion)?)$/i, '').trim();
+  } else if (/(?:juta|jt|mio|m(?:illion)?)$/i.test(s)) {
+    // Solitary 'M' or 'mio'/'juta' is 1e6 (Million / Juta IDR)
     multiplier = 1e6;
-    s = s.replace(/(?:juta|jt|mio)$/i, '').trim();
+    s = s.replace(/(?:juta|jt|mio|m(?:illion)?)$/i, '').trim();
   } else if (/(?:ribu|k)$/i.test(s)) {
+    // 'K' or 'ribu' is 1e3 (Thousand / Ribu)
     multiplier = 1e3;
     s = s.replace(/(?:ribu|k)$/i, '').trim();
   }
@@ -153,29 +181,22 @@ export function formatRupiahShort(amount: number | null | undefined): string {
   const abs = Math.abs(amount);
 
   if (abs >= 1e12) {
-    return `${sign}Rp ${(abs / 1e12).toFixed(2)} T`;
+    const val = (abs / 1e12).toFixed(2).replace('.', ',');
+    return `${sign}Rp ${val} T`;
   }
   if (abs >= 1e9) {
-    return `${sign}Rp ${(abs / 1e9).toFixed(2)} M`;
+    const val = (abs / 1e9).toFixed(2).replace('.', ',');
+    return `${sign}Rp ${val} M`;
   }
   if (abs >= 1e6) {
-    return `${sign}Rp ${(abs / 1e6).toFixed(1)} Jt`;
+    const val = (abs / 1e6).toFixed(1).replace('.', ',');
+    return `${sign}Rp ${val} Jt`;
   }
-  return `${sign}Rp ${abs.toLocaleString('id-ID')}`;
+  return `${sign}Rp ${formatDotNumber(abs)}`;
 }
 
 export function formatNumberShort(num: number | null | undefined): string {
-  if (num === null || num === undefined || isNaN(num)) return '0';
-  const abs = Math.abs(num);
-  const sign = num < 0 ? '-' : '';
-
-  if (abs >= 1e6) {
-    return `${sign}${(abs / 1e6).toFixed(1)}M`;
-  }
-  if (abs >= 1e3) {
-    return `${sign}${(abs / 1e3).toFixed(1)}K`;
-  }
-  return `${sign}${abs.toLocaleString('id-ID')}`;
+  return formatDotNumber(num);
 }
 
 /**
@@ -200,7 +221,7 @@ function resolveTokensToMetrics(tokens: string[]): { lot: number; val: number; a
     const str0 = tokens[0].toLowerCase();
     const str1 = tokens[1].toLowerCase();
 
-    // Check unit suffixes (e.g. 77.3B is val, 236.8K is lot)
+    // Check unit suffixes (e.g. 77.3B is val, 236.8K is lot, 159.1M is val)
     const isVal0 = /[bmt]|miliar|milyar|triliun/i.test(str0) || num0 > 1e8;
     const isLot0 = /[k]|ribu|lot/i.test(str0);
 
@@ -251,12 +272,37 @@ function buildBrokerItem(
 ): BrokerItem {
   const upper = code.replace(/[^A-Za-z]/g, '').toUpperCase();
   const info = getBrokerInfo(upper);
+
+  // SANITY CHECK & SELF-HEALING AUTO-CORRECTION:
+  // In IDX, 1 lot = 100 shares. Therefore: Expected Transaction Value = lot * 100 * avgPrice.
+  let correctedVal = value;
+  let correctedAvg = avgPrice;
+
+  if (lot > 0 && avgPrice > 0) {
+    const expectedVal = lot * 100 * avgPrice;
+    if (correctedVal > 0) {
+      const ratio = correctedVal / expectedVal;
+      // If parsed value is ~1000x too large (e.g. M parsed as Miliar instead of Million)
+      if (ratio >= 500 && ratio <= 1500) {
+        correctedVal = Math.round(correctedVal / 1000);
+      }
+      // If parsed value is ~1000x too small (e.g. B parsed as Million instead of Billion)
+      else if (ratio >= 0.0005 && ratio <= 0.002) {
+        correctedVal = Math.round(correctedVal * 1000);
+      }
+    } else {
+      correctedVal = expectedVal;
+    }
+  } else if (lot > 0 && correctedVal > 0 && !correctedAvg) {
+    correctedAvg = Math.round(correctedVal / (lot * 100));
+  }
+
   return {
     broker: upper,
     side,
     lot,
-    value,
-    avgPrice,
+    value: correctedVal,
+    avgPrice: correctedAvg,
     category: getBrokerCategoryLegacy(upper),
     brokerName: info?.name,
     classification: info?.classification,
@@ -692,10 +738,9 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
   // Analytical Reasons
   const reasons: string[] = [];
   if (bandarValue3 !== 0) {
-    const bvSign = bandarValue3 > 0 ? '+' : '';
-    const bvFormatted = (bandarValue3 / 1e9).toFixed(2);
+    const bvFormatted = formatRupiahShort(bandarValue3);
     reasons.push(
-      `Bandar Value (Top 3) bernilai ${bvSign}Rp ${bvFormatted} Miliar (${
+      `Bandar Value (Top 3) bernilai ${bvFormatted} (${
         bandarValue3 > 0 ? 'Net Buyer lebih dominan daripada Seller' : 'Net Seller lebih dominan daripada Buyer'
       }).`
     );
@@ -704,7 +749,7 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
     reasons.push(
       `Konsentrasi Buyer Top 3 sebesar ${buyerConc.top3}% vs Seller Top 3 sebesar ${sellerConc.top3}% (delta ${
         concDelta > 0 ? '+' : ''
-      }${concDelta.toFixed(1)}%).`
+      }${concDelta.toFixed(1).replace('.', ',')}%).`
     );
   }
   if (instNetBuyVal > 0 && retailNetBuyVal < 0) {
@@ -721,17 +766,15 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
     );
   }
   if (foreignFlow !== null && foreignFlow !== 0) {
-    const ffSign = foreignFlow > 0 ? '+' : '';
-    reasons.push(`Net Foreign Flow tercatat ${ffSign}Rp ${(foreignFlow / 1e9).toFixed(2)} Miliar.`);
+    reasons.push(`Net Foreign Flow tercatat ${formatRupiahShort(foreignFlow)}.`);
   }
 
   if (orderbookStats && orderbookStats.tapeReadingSignal) {
     reasons.push(orderbookStats.tapeReadingSignal);
   }
   if (netForeignIntraday !== undefined) {
-    const sign = netForeignIntraday > 0 ? '+' : '';
     reasons.push(
-      `Intraday Foreign Flow: Foreign Buy Rp ${((obForeignBuy || 0) / 1e9).toFixed(1)}B vs Foreign Sell Rp ${((obForeignSell || 0) / 1e9).toFixed(1)}B (Net Asing: ${sign}Rp ${(netForeignIntraday / 1e9).toFixed(1)} Miliar).`
+      `Intraday Foreign Flow: Foreign Buy ${formatRupiahShort(obForeignBuy || 0)} vs Foreign Sell ${formatRupiahShort(obForeignSell || 0)} (Net Asing: ${formatRupiahShort(netForeignIntraday)}).`
     );
   }
 

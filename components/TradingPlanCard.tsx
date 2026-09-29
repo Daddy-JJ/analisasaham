@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { StockQuoteData } from '@/lib/yahoo-finance';
+import { formatDotNumber } from '@/lib/broksum-parser';
 import { Activity, ShieldAlert, Target, TrendingUp, AlertTriangle, ArrowUpRight, ArrowDownRight, Compass } from 'lucide-react';
 
 interface TradingPlanCardProps {
@@ -86,8 +87,8 @@ export default function TradingPlanCard({
           <div className="text-xl font-bold font-mono text-slate-100">
             {stockData.price != null
               ? isIHSG
-                ? stockData.price.toFixed(2)
-                : `Rp ${stockData.price.toLocaleString('id-ID')}`
+                ? stockData.price.toFixed(2).replace('.', ',')
+                : `Rp ${formatDotNumber(stockData.price)}`
               : '-'}
           </div>
           <div
@@ -100,10 +101,10 @@ export default function TradingPlanCard({
               {isPositive ? '+' : ''}
               {stockData.change != null
                 ? isIHSG
-                  ? stockData.change.toFixed(2)
-                  : stockData.change.toLocaleString('id-ID')
+                  ? stockData.change.toFixed(2).replace('.', ',')
+                  : formatDotNumber(stockData.change)
                 : '0'}
-              {' '}({stockData.changePercent != null ? (isPositive ? `+${stockData.changePercent.toFixed(2)}` : stockData.changePercent.toFixed(2)) : '0'}%)
+              {' '}({stockData.changePercent != null ? (isPositive ? `+${stockData.changePercent.toFixed(2).replace('.', ',')}` : stockData.changePercent.toFixed(2).replace('.', ',')) : '0'}%)
             </span>
           </div>
         </div>
@@ -114,23 +115,23 @@ export default function TradingPlanCard({
         <div className="bg-terminal-950/60 p-2 rounded-lg border border-terminal-800/60">
           <span className="text-slate-500 block text-[10px]">Rentang Hari Ini</span>
           <span className="text-slate-200">
-            {stockData.low != null ? stockData.low.toLocaleString('id-ID') : '-'} - {stockData.high != null ? stockData.high.toLocaleString('id-ID') : '-'}
+            {stockData.low != null ? formatDotNumber(stockData.low) : '-'} - {stockData.high != null ? formatDotNumber(stockData.high) : '-'}
           </span>
         </div>
         <div className="bg-terminal-950/60 p-2 rounded-lg border border-terminal-800/60">
           <span className="text-slate-500 block text-[10px]">52-Week Range</span>
           <span className="text-slate-200">
-            {stockData.fiftyTwoWeekLow != null ? stockData.fiftyTwoWeekLow.toLocaleString('id-ID') : '-'} - {stockData.fiftyTwoWeekHigh != null ? stockData.fiftyTwoWeekHigh.toLocaleString('id-ID') : '-'}
+            {stockData.fiftyTwoWeekLow != null ? formatDotNumber(stockData.fiftyTwoWeekLow) : '-'} - {stockData.fiftyTwoWeekHigh != null ? formatDotNumber(stockData.fiftyTwoWeekHigh) : '-'}
           </span>
         </div>
         <div className="bg-terminal-950/60 p-2 rounded-lg border border-terminal-800/60">
           <span className="text-slate-500 block text-[10px]">Volume Terakhir</span>
-          <span className="text-slate-200">{stockData.volume != null ? stockData.volume.toLocaleString('id-ID') : '-'}</span>
+          <span className="text-slate-200">{stockData.volume != null ? `${formatDotNumber(stockData.volume)} lot` : '-'}</span>
         </div>
         <div className="bg-terminal-950/60 p-2 rounded-lg border border-terminal-800/60">
           <span className="text-slate-500 block text-[10px]">Vol Ratio (vs MA20)</span>
           <span className={`font-semibold ${stockData.volumeRatio && stockData.volumeRatio > 1.5 ? 'text-emerald-400' : 'text-slate-200'}`}>
-            {stockData.volumeRatio ? `${stockData.volumeRatio}x` : 'N/A'}
+            {stockData.volumeRatio ? `${stockData.volumeRatio.toFixed(2).replace('.', ',')}x` : 'N/A'}
           </span>
         </div>
       </div>
@@ -165,15 +166,15 @@ export default function TradingPlanCard({
         <div className="grid grid-cols-3 gap-1.5 pt-2 text-[11px] font-mono text-center">
           <div className={`p-1 rounded border ${aboveMA20 ? 'bg-emerald-950/30 border-emerald-800/50 text-emerald-300' : 'bg-rose-950/30 border-rose-800/50 text-rose-300'}`}>
             <span className="block text-[9px] text-slate-500">MA20</span>
-            {stockData.ma20 ? stockData.ma20.toLocaleString('id-ID') : '-'}
+            {stockData.ma20 ? formatDotNumber(stockData.ma20) : '-'}
           </div>
           <div className={`p-1 rounded border ${aboveMA50 ? 'bg-emerald-950/30 border-emerald-800/50 text-emerald-300' : 'bg-rose-950/30 border-rose-800/50 text-rose-300'}`}>
             <span className="block text-[9px] text-slate-500">MA50</span>
-            {stockData.ma50 ? stockData.ma50.toLocaleString('id-ID') : '-'}
+            {stockData.ma50 ? formatDotNumber(stockData.ma50) : '-'}
           </div>
           <div className={`p-1 rounded border ${aboveMA200 ? 'bg-emerald-950/30 border-emerald-800/50 text-emerald-300' : 'bg-rose-950/30 border-rose-800/50 text-rose-300'}`}>
             <span className="block text-[9px] text-slate-500">MA200</span>
-            {stockData.ma200 ? stockData.ma200.toLocaleString('id-ID') : '-'}
+            {stockData.ma200 ? formatDotNumber(stockData.ma200) : '-'}
           </div>
         </div>
       </div>

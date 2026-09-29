@@ -25,6 +25,7 @@ import {
   parseBroksumText,
   formatRupiahShort,
   formatNumberShort,
+  formatDotNumber,
   ParsedBroksumResult,
   BrokerItem,
 } from '@/lib/broksum-parser';
@@ -1106,7 +1107,7 @@ export default function BroksumModal({
                     <div className="space-y-1">
                       <div className="flex items-center justify-between text-[11px] font-mono">
                         <span className="text-emerald-400 font-semibold">
-                          Bid: {formatNumberShort(parsed.orderbook.totalBidLot)} lot{' '}
+                          Bid: {formatDotNumber(parsed.orderbook.totalBidLot)} lot{' '}
                           <span className="text-[10px] text-slate-400 font-normal">
                             ({Math.round(
                               (parsed.orderbook.totalBidLot /
@@ -1126,7 +1127,7 @@ export default function BroksumModal({
                                 100
                             )}%){' '}
                           </span>
-                          Offer: {formatNumberShort(parsed.orderbook.totalOfferLot)} lot
+                          Offer: {formatDotNumber(parsed.orderbook.totalOfferLot)} lot
                         </span>
                       </div>
                       <div className="w-full h-2.5 bg-terminal-950 rounded-full overflow-hidden flex border border-terminal-800">
@@ -1160,7 +1161,7 @@ export default function BroksumModal({
                       <div className="bg-terminal-950/60 p-1.5 rounded border border-terminal-800">
                         <div className="text-[9px] text-slate-400">Harga Terakhir</div>
                         <div className="font-bold text-slate-200">
-                          Rp {parsed.orderbook.lastPrice.toLocaleString('id-ID')}
+                          Rp {formatDotNumber(parsed.orderbook.lastPrice)}
                           {parsed.orderbook.changePercent !== undefined && (
                             <span
                               className={`text-[10px] ml-1 ${
@@ -1198,7 +1199,7 @@ export default function BroksumModal({
                       <div className="bg-terminal-950/60 p-1.5 rounded border border-terminal-800">
                         <div className="text-[9px] text-slate-400">Avg Transaksi</div>
                         <div className="font-bold text-slate-300">
-                          Rp {parsed.orderbook.avg.toLocaleString('id-ID')}
+                          Rp {formatDotNumber(parsed.orderbook.avg)}
                         </div>
                       </div>
                     )}
@@ -1228,10 +1229,10 @@ export default function BroksumModal({
                             {renderBrokerBadge(b.broker, b)}
                           </div>
                           <div className="text-right">
-                            <span>{formatNumberShort(b.lot)} lot</span>
+                            <span>{formatDotNumber(b.lot)} lot</span>
                             <span className="text-slate-400 ml-1.5">{formatRupiahShort(b.value)}</span>
                             {b.avgPrice > 0 && (
-                              <span className="text-slate-500 ml-1">@{b.avgPrice.toLocaleString('id-ID')}</span>
+                              <span className="text-slate-500 ml-1">@{formatDotNumber(b.avgPrice)}</span>
                             )}
                           </div>
                         </div>
@@ -1258,10 +1259,10 @@ export default function BroksumModal({
                             {renderBrokerBadge(s.broker, s)}
                           </div>
                           <div className="text-right">
-                            <span>{formatNumberShort(s.lot)} lot</span>
+                            <span>{formatDotNumber(s.lot)} lot</span>
                             <span className="text-slate-400 ml-1.5">{formatRupiahShort(s.value)}</span>
                             {s.avgPrice > 0 && (
-                              <span className="text-slate-500 ml-1">@{s.avgPrice.toLocaleString('id-ID')}</span>
+                              <span className="text-slate-500 ml-1">@{formatDotNumber(s.avgPrice)}</span>
                             )}
                           </div>
                         </div>

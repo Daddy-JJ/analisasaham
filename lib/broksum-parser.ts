@@ -103,19 +103,21 @@ export function getBrokerCategory(code: string): 'FOREIGN_INST' | 'LOCAL_INST' |
  */
 export function formatDotNumber(
   num: number | null | undefined,
-  maxDecimals = 0
+  maxDecimals = 0,
+  stripTrailingZeros = false
 ): string {
   if (num === null || num === undefined || isNaN(num)) return '0';
   const sign = num < 0 ? '-' : '';
   const abs = Math.abs(num);
 
   if (maxDecimals > 0) {
-    const fixed = abs.toFixed(maxDecimals);
+    let fixed = abs.toFixed(maxDecimals);
+    if (stripTrailingZeros && fixed.includes('.')) {
+      fixed = fixed.replace(/\.?0+$/, '');
+    }
     const [intPart, decPart] = fixed.split('.');
     const formattedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-    return decPart && parseInt(decPart) > 0
-      ? `${sign}${formattedInt},${decPart}`
-      : `${sign}${formattedInt}`;
+    return decPart ? `${sign}${formattedInt},${decPart}` : `${sign}${formattedInt}`;
   }
 
   const rounded = Math.round(abs);
@@ -134,8 +136,8 @@ export function parseIndoNumber(raw: string | number | undefined | null): number
     sign = -1;
   }
 
-  // Strip currency prefix and parentheses
-  s = s.replace(/(?:Rp|IDR)\.?/gi, '').replace(/[+()]/g, '').trim();
+  // Strip currency prefix, parentheses, and percent symbols
+  s = s.replace(/(?:Rp|IDR)\.?/gi, '').replace(/[+()%]/g, '').trim();
   if (s.startsWith('-')) s = s.slice(1).trim();
 
   let multiplier = 1;
@@ -248,7 +250,21 @@ function resolveTokensToMetrics(tokens: string[]): { lot: number; val: number; a
   } else if (tokens.length === 2) {
     const num0 = parseIndoNumber(tokens[0]);
     const num1 = parseIndoNumber(tokens[1]);
-    if (num0 > num1 * 100) {
+    const str0 = tokens[0].toLowerCase();
+    const str1 = tokens[1].toLowerCase();
+
+    const isVal0 = /[bmt]|miliar|milyar|triliun/i.test(str0) || num0 > 1e8;
+    const isLot0 = /[k]|ribu|lot/i.test(str0);
+    const isVal1 = /[bmt]|miliar|milyar|triliun/i.test(str1) || num1 > 1e8;
+    const isLot1 = /[k]|ribu|lot/i.test(str1);
+
+    if (isVal0 && !isLot0 && (isLot1 || !isVal1)) {
+      val = num0;
+      lot = num1;
+    } else if (isVal1 && !isLot1 && (isLot0 || !isVal0)) {
+      val = num1;
+      lot = num0;
+    } else if (num0 > num1 * 100) {
       val = num0;
       lot = num1;
     } else {
@@ -356,6 +372,21 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
   let obTotalOfferFreq: number | undefined;
   const obDepthLevels: OrderbookDepthItem[] = [];
 
+  // Summary and participation variables
+  let explicitBuyerCount: number | undefined;
+  let explicitSellerCount: number | undefined;
+
+  let summaryTop1Val: number | undefined;
+  let summaryTop3Val: number | undefined;
+  let summaryTop5Val: number | undefined;
+  let summaryBuyerConc1: number | undefined;
+  let summaryBuyerConc3: number | undefined;
+  let summaryBuyerConc5: number | undefined;
+  let summarySellerConc1: number | undefined;
+  let summarySellerConc3: number | undefined;
+  let summarySellerConc5: number | undefined;
+  const summaryLabels: Record<number, string> = {};
+
   // Extract Ticker from header if present (e.g. "Emiten: ANTM" or "+ ANTM" or "Ticker: ANTM" or "DSSA 1,055")
   const tickerMatch = cleanText.match(/(?:emiten|ticker|saham)\s*[:=]?\s*([A-Za-z]{4})/i) ||
                       cleanText.match(/^\s*\+\s*([A-Za-z]{4})\b/m) ||
@@ -445,14 +476,39 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
       obTotalOfferLot = parseIndoNumber(totalOfferMatch[1]);
     }
 
-    // Orderbook Summary Footer Row: e.g. "3,428 571,744 1,759,762 9,146" (FreqBid LotBid LotOffer FreqOffer)
-    const obFooterMatch = line.match(/^\s*([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)\s*$/);
-    if (obFooterMatch) {
-      const v1 = parseIndoNumber(obFooterMatch[1]);
-      const v2 = parseIndoNumber(obFooterMatch[2]);
-      const v3 = parseIndoNumber(obFooterMatch[3]);
-      const v4 = parseIndoNumber(obFooterMatch[4]);
-      if (v2 >= 100 && v3 >= 100) {
+    // Orderbook Depth Row (6 tokens: FreqBid LotBid Bid Offer LotOffer FreqOffer)
+    const depth6Match = line.match(/^\s*([\d.,]+)\s+([\d.,]+[A-Za-z]?)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+[A-Za-z]?)\s+([\d.,]+)\s*$/);
+    if (depth6Match && obDepthLevels.length < 10) {
+      const bidFreq = parseIndoNumber(depth6Match[1]);
+      const bidLot = parseIndoNumber(depth6Match[2]);
+      const bidPrice = parseIndoNumber(depth6Match[3]);
+      const offerPrice = parseIndoNumber(depth6Match[4]);
+      const offerLot = parseIndoNumber(depth6Match[5]);
+      const offerFreq = parseIndoNumber(depth6Match[6]);
+      if (bidPrice > 0 && offerPrice > 0 && bidPrice <= offerPrice && (bidLot > 0 || offerLot > 0)) {
+        obDepthLevels.push({ bidFreq, bidLot, bidPrice, offerPrice, offerLot, offerFreq });
+        continue;
+      }
+    }
+
+    // Orderbook 4-token row: Depth (LotBid PriceBid PriceOffer LotOffer) OR Summary Footer (FreqBid LotBid LotOffer FreqOffer)
+    const ob4Match = line.match(/^\s*([\d.,]+[A-Za-z]?)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+[A-Za-z]?)\s*$/);
+    if (ob4Match) {
+      const v1 = parseIndoNumber(ob4Match[1]);
+      const v2 = parseIndoNumber(ob4Match[2]);
+      const v3 = parseIndoNumber(ob4Match[3]);
+      const v4 = parseIndoNumber(ob4Match[4]);
+
+      // If middle two tokens look like Bid Price & Offer Price (v2 <= v3 and spread <= 10%)
+      if (v2 > 0 && v3 > 0 && v2 <= v3 && ((v3 - v2) / v2) <= 0.10) {
+        if (obDepthLevels.length < 10) {
+          obDepthLevels.push({ bidLot: v1, bidPrice: v2, offerPrice: v3, offerLot: v4 });
+        }
+        continue;
+      }
+
+      // Otherwise, if outer two are Freq and inner two are Total Lots:
+      if (v2 >= 500 && v3 >= 500 && !obTotalBidLot && !obTotalOfferLot) {
         obTotalBidFreq = v1;
         obTotalBidLot = v2;
         obTotalOfferLot = v3;
@@ -478,6 +534,72 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
     if (/^(?:top\s*(?:net\s*)?sellers?|sellers?|penjual)/i.test(line) && !/buyers?|pembeli/i.test(line)) {
       currentSection = 'SELL';
       continue;
+    }
+
+    // Broker Count Line (e.g. "6 BUYER 22 SELLER" or "Total Buyer: 6, Total Seller: 22")
+    const brokerCountMatch = line.match(/(\d+)\s*(?:buyers?|pembeli)\s*[:,\s|/]+\s*(\d+)\s*(?:sellers?|penjual)/i) ||
+                             line.match(/(?:buyers?|pembeli)\s*[:=]?\s*(\d+)\s*[:,\s|/]+\s*(?:sellers?|penjual)\s*[:=]?\s*(\d+)/i) ||
+                             line.match(/total\s*(?:buyers?|pembeli)\s*[:=]\s*(\d+).*?total\s*(?:sellers?|penjual)\s*[:=]\s*(\d+)/i);
+    if (brokerCountMatch) {
+      explicitBuyerCount = parseInt(brokerCountMatch[1]);
+      explicitSellerCount = parseInt(brokerCountMatch[2]);
+      continue;
+    }
+
+    // Summary Rows: Top 1, Top 3, Top 5
+    // Format A (Stockbit Dual side): "TOP 1: 0.1B (52.2%) / 0.1B (34.5%)"
+    // Format B (Net Val + Label): "Top 1: -8.1B (Small Dist)" or "Top 3: +0.6B (Acc)"
+    // Format C (Label only): "Top 1: Small Acc"
+    const topSummaryMatch = line.match(/^top\s*([135])\s*[:=]\s*(.+)$/i);
+    if (topSummaryMatch) {
+      const n = parseInt(topSummaryMatch[1]) as 1 | 3 | 5;
+      const rest = topSummaryMatch[2].trim();
+
+      const dualMatch = rest.match(/([+\-]?[\d.,]+[A-Za-z]*)\s*\(([\d.,]+)%\)\s*[/|]\s*([+\-]?[\d.,]+[A-Za-z]*)\s*\(([\d.,]+)%\)/i);
+      if (dualMatch) {
+        const bVal = parseIndoNumber(dualMatch[1]);
+        const bConc = parseFloat(dualMatch[2].replace(',', '.'));
+        const sVal = parseIndoNumber(dualMatch[3]);
+        const sConc = parseFloat(dualMatch[4].replace(',', '.'));
+        const netVal = bVal - sVal;
+
+        if (n === 1) {
+          summaryTop1Val = netVal;
+          summaryBuyerConc1 = bConc;
+          summarySellerConc1 = sConc;
+        } else if (n === 3) {
+          summaryTop3Val = netVal;
+          summaryBuyerConc3 = bConc;
+          summarySellerConc3 = sConc;
+        } else if (n === 5) {
+          summaryTop5Val = netVal;
+          summaryBuyerConc5 = bConc;
+          summarySellerConc5 = sConc;
+        }
+        continue;
+      }
+
+      const valLabelMatch = rest.match(/^([+\-]?[\d.,]+[A-Za-z]*)\s*(?:\(([^)]+)\))?$/);
+      if (valLabelMatch) {
+        const val = parseIndoNumber(valLabelMatch[1]);
+        const lbl = valLabelMatch[2]?.trim();
+        if (n === 1) {
+          summaryTop1Val = val;
+          if (lbl) summaryLabels[1] = lbl;
+        } else if (n === 3) {
+          summaryTop3Val = val;
+          if (lbl) summaryLabels[3] = lbl;
+        } else if (n === 5) {
+          summaryTop5Val = val;
+          if (lbl) summaryLabels[5] = lbl;
+        }
+        continue;
+      }
+
+      if (/^(?:big\s*acc(?:umulation)?|normal\s*acc(?:umulation)?|small\s*acc(?:umulation)?|acc(?:umulation)?|neutral|small\s*dist(?:ribution)?|normal\s*dist(?:ribution)?|big\s*dist(?:ribution)?|dist(?:ribution)?)$/i.test(rest)) {
+        summaryLabels[n] = rest;
+        continue;
+      }
     }
 
     // Ignore tabular headers
@@ -592,7 +714,13 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
     obLastPrice !== undefined
   );
 
-  if (aggBuyers.length === 0 && aggSellers.length === 0 && !hasOrderbook) {
+  const hasSummary =
+    summaryTop1Val !== undefined ||
+    summaryTop3Val !== undefined ||
+    summaryTop5Val !== undefined ||
+    Boolean(summaryLabels[1] || summaryLabels[3] || summaryLabels[5]);
+
+  if (aggBuyers.length === 0 && aggSellers.length === 0 && !hasOrderbook && !hasSummary) {
     return createEmptyBroksumResult(ticker);
   }
 
@@ -609,19 +737,31 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
   if (bidOfferRatio !== undefined) {
     if (bidOfferRatio <= 0.45) {
       orderbookPosture = 'HEAVY_OFFER_SUPPRESSION';
-      tapeReadingSignal = `Heavy Offer Wall Pressure: Total antrean Offer (${obTotalOfferLot?.toLocaleString('id-ID')} lot) lebih dari 2.2x lipat Bid (${obTotalBidLot?.toLocaleString('id-ID')} lot, Rasio ${bidOfferRatio}x). Mengindikasikan penekanan harga jual / pasokan melimpah di atas.`;
+      tapeReadingSignal = `Heavy Offer Wall Pressure: Total antrean Offer (${formatDotNumber(obTotalOfferLot)} lot) lebih dari 2.2x lipat Bid (${formatDotNumber(obTotalBidLot)} lot, Rasio ${bidOfferRatio}x). Mengindikasikan penekanan harga jual / pasokan melimpah di atas.`;
     } else if (bidOfferRatio <= 0.8) {
       orderbookPosture = 'MODERATE_OFFER';
       tapeReadingSignal = `Moderate Offer Dominance: Sisi penawaran (Offer) lebih tebal dari sisi permintaan (Bid, Rasio ${bidOfferRatio}x).`;
     } else if (bidOfferRatio >= 2.2) {
       orderbookPosture = 'STRONG_BID_CUSHION';
-      tapeReadingSignal = `Strong Bid Cushion: Antrean beli Bid (${obTotalBidLot?.toLocaleString('id-ID')} lot) mendominasi lebih dari 2.2x lipat Offer (${obTotalOfferLot?.toLocaleString('id-ID')} lot, Rasio ${bidOfferRatio}x). Mengindikasikan bantalan penahan harga kuat atau penyerapan agresif.`;
+      tapeReadingSignal = `Strong Bid Cushion: Antrean beli Bid (${formatDotNumber(obTotalBidLot)} lot) mendominasi lebih dari 2.2x lipat Offer (${formatDotNumber(obTotalOfferLot)} lot, Rasio ${bidOfferRatio}x). Mengindikasikan bantalan penahan harga kuat atau penyerapan agresif.`;
     } else if (bidOfferRatio >= 1.25) {
       orderbookPosture = 'MODERATE_BID';
       tapeReadingSignal = `Moderate Bid Support: Pembeli menyusun antrean penahan di sisi Bid lebih banyak dari Offer (Rasio ${bidOfferRatio}x).`;
     } else {
       orderbookPosture = 'BALANCED';
       tapeReadingSignal = `Balanced Orderbook: Kedalaman antrean Bid dan Offer relatif seimbang (Rasio ${bidOfferRatio}x).`;
+    }
+  }
+
+  // Tape reading depth walls detection
+  if (obDepthLevels.length > 0 && obTotalBidLot && obTotalOfferLot) {
+    const maxBidLevel = obDepthLevels.reduce((max, d) => (d.bidLot && d.bidLot > (max.bidLot || 0) ? d : max), obDepthLevels[0]);
+    const maxOfferLevel = obDepthLevels.reduce((max, d) => (d.offerLot && d.offerLot > (max.offerLot || 0) ? d : max), obDepthLevels[0]);
+    if (maxBidLevel.bidLot && maxBidLevel.bidLot / obTotalBidLot >= 0.35 && maxBidLevel.bidPrice) {
+      tapeReadingSignal += ` Tembok Penahan (Bid Wall): Antrean tebal di Rp ${formatDotNumber(maxBidLevel.bidPrice)} (${formatDotNumber(maxBidLevel.bidLot)} lot, ${Math.round((maxBidLevel.bidLot / obTotalBidLot) * 100)}% dari total Bid).`;
+    }
+    if (maxOfferLevel.offerLot && maxOfferLevel.offerLot / obTotalOfferLot >= 0.35 && maxOfferLevel.offerPrice) {
+      tapeReadingSignal += ` Tembok Pasokan (Offer Wall): Antrean tebal di Rp ${formatDotNumber(maxOfferLevel.offerPrice)} (${formatDotNumber(maxOfferLevel.offerLot)} lot, ${Math.round((maxOfferLevel.offerLot / obTotalOfferLot) * 100)}% dari total Offer).`;
     }
   }
 
@@ -664,25 +804,27 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
   };
 
   const buyerConc: ConcentrationStats = {
-    top1: calcConc(aggBuyers, totalBuyerVal, 1),
-    top3: calcConc(aggBuyers, totalBuyerVal, 3),
-    top5: calcConc(aggBuyers, totalBuyerVal, 5),
+    top1: summaryBuyerConc1 ?? calcConc(aggBuyers, totalBuyerVal, 1),
+    top3: summaryBuyerConc3 ?? calcConc(aggBuyers, totalBuyerVal, 3),
+    top5: summaryBuyerConc5 ?? calcConc(aggBuyers, totalBuyerVal, 5),
   };
 
   const sellerConc: ConcentrationStats = {
-    top1: calcConc(aggSellers, totalSellerVal, 1),
-    top3: calcConc(aggSellers, totalSellerVal, 3),
-    top5: calcConc(aggSellers, totalSellerVal, 5),
+    top1: summarySellerConc1 ?? calcConc(aggSellers, totalSellerVal, 1),
+    top3: summarySellerConc3 ?? calcConc(aggSellers, totalSellerVal, 3),
+    top5: summarySellerConc5 ?? calcConc(aggSellers, totalSellerVal, 5),
   };
 
   // Bandar Value (Top 3 & Top 5)
   const top3BuyerVal = aggBuyers.slice(0, 3).reduce((s, b) => s + b.value, 0);
   const top3SellerVal = aggSellers.slice(0, 3).reduce((s, b) => s + b.value, 0);
-  const bandarValue3 = top3BuyerVal - top3SellerVal;
+  const calculatedBv3 = top3BuyerVal - top3SellerVal;
+  const bandarValue3 = summaryTop3Val ?? (calculatedBv3 !== 0 ? calculatedBv3 : (summaryTop5Val ?? summaryTop1Val ?? 0));
 
   const top5BuyerVal = aggBuyers.slice(0, 5).reduce((s, b) => s + b.value, 0);
   const top5SellerVal = aggSellers.slice(0, 5).reduce((s, b) => s + b.value, 0);
-  const bandarValue5 = top5BuyerVal - top5SellerVal;
+  const calculatedBv5 = top5BuyerVal - top5SellerVal;
+  const bandarValue5 = summaryTop5Val ?? (calculatedBv5 !== 0 ? calculatedBv5 : bandarValue3);
 
   // Retail vs Smart Money (Institusi / Asing / BUMN)
   const retailBuyers = aggBuyers.filter((b) => isBrokerRetailHeavy(b.broker));
@@ -695,7 +837,7 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
 
   // Scoring (-100 to +100)
   let score = 0;
-  const maxTopVal = Math.max(top3BuyerVal, top3SellerVal, 1);
+  const maxTopVal = Math.max(top3BuyerVal, top3SellerVal, Math.abs(bandarValue3), 1);
   const bvRatio = bandarValue3 / maxTopVal;
   score += Math.max(-40, Math.min(40, Math.round(bvRatio * 40)));
 
@@ -707,9 +849,44 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
   else if (instNetBuyVal > 0) score += 10;
   else if (instNetBuyVal < 0) score -= 10;
 
+  // Fallback foreign flow from intraday orderbook if not explicitly stated in broksum text
+  if (foreignFlow === null && netForeignIntraday !== undefined) {
+    foreignFlow = netForeignIntraday;
+  }
+
   if (foreignFlow !== null) {
     if (foreignFlow > 0) score += 10;
     else if (foreignFlow < 0) score -= 10;
+  }
+
+  // Orderbook Posture Factor (Real-time Tape Reading confirmation)
+  if (orderbookPosture === 'STRONG_BID_CUSHION') {
+    score += 10;
+  } else if (orderbookPosture === 'HEAVY_OFFER_SUPPRESSION') {
+    score -= 10;
+  }
+
+  // Participation Asymmetry Factor (Few buyers accumulating from many sellers = Accumulation)
+  const effectiveBuyerCount = explicitBuyerCount ?? (aggBuyers.length > 0 ? aggBuyers.length : undefined);
+  const effectiveSellerCount = explicitSellerCount ?? (aggSellers.length > 0 ? aggSellers.length : undefined);
+  if (effectiveBuyerCount !== undefined && effectiveSellerCount !== undefined && effectiveBuyerCount > 0 && effectiveSellerCount > 0) {
+    const pRatio = effectiveBuyerCount / effectiveSellerCount;
+    if (pRatio <= 0.5) score += 10;
+    else if (pRatio >= 2.0) score -= 10;
+  }
+
+  // If only summary rows were provided (no individual broker items)
+  if (aggBuyers.length === 0 && aggSellers.length === 0 && hasSummary) {
+    const summaryRefLabel = summaryLabels[3] || summaryLabels[5] || summaryLabels[1] || '';
+    if (/big\s*acc/i.test(summaryRefLabel)) score = 65;
+    else if (/normal\s*acc|^acc/i.test(summaryRefLabel)) score = 35;
+    else if (/small\s*acc/i.test(summaryRefLabel)) score = 25;
+    else if (/neutral/i.test(summaryRefLabel)) score = 0;
+    else if (/small\s*dist/i.test(summaryRefLabel)) score = -25;
+    else if (/normal\s*dist|^dist/i.test(summaryRefLabel)) score = -35;
+    else if (/big\s*dist/i.test(summaryRefLabel)) score = -65;
+    else if (bandarValue3 > 0) score = 30;
+    else if (bandarValue3 < 0) score = -30;
   }
 
   score = Math.max(-100, Math.min(100, score));
@@ -733,7 +910,8 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
 
   const totalBrokers = aggBuyers.length + aggSellers.length;
   let confidence = Math.min(0.95, 0.5 + totalBrokers * 0.05);
-  if (totalBuyerVal === 0 && totalSellerVal === 0) confidence = 0.1;
+  if (totalBuyerVal === 0 && totalSellerVal === 0 && hasSummary) confidence = 0.75;
+  else if (totalBuyerVal === 0 && totalSellerVal === 0) confidence = 0.1;
 
   // Analytical Reasons
   const reasons: string[] = [];
@@ -765,6 +943,32 @@ export function parseBroksumText(text: string, ticker = ''): ParsedBroksumResult
       `Pola Retail Trap/Distribusi: Broker institusi/asing melakukan aksi jual (${instNames}) yang ditampung oleh broker ritel (${retailNames}).`
     );
   }
+
+  // Participation Asymmetry Reason
+  if (effectiveBuyerCount !== undefined && effectiveSellerCount !== undefined && effectiveBuyerCount > 0 && effectiveSellerCount > 0) {
+    const pRatio = effectiveBuyerCount / effectiveSellerCount;
+    if (pRatio <= 0.5) {
+      reasons.push(
+        `Partisipasi Asimetris: Terdeteksi konsentrasi beli tinggi (${effectiveBuyerCount} Buyer menyerap pasokan dari ${effectiveSellerCount} Seller, rasio ${formatDotNumber(pRatio, 2)}x). Mengindikasikan akumulasi ke tangan yang lebih sedikit.`
+      );
+    } else if (pRatio >= 2.0) {
+      reasons.push(
+        `Partisipasi Asimetris: Terdeteksi dispersi jual (${effectiveBuyerCount} Buyer menampung barang dari hanya ${effectiveSellerCount} Seller, rasio ${formatDotNumber(pRatio, 2)}x). Mengindikasikan distribusi ke publik.`
+      );
+    } else {
+      reasons.push(
+        `Partisipasi Broker: Terdata ${effectiveBuyerCount} Buyer berhadapan dengan ${effectiveSellerCount} Seller.`
+      );
+    }
+  }
+
+  // Summary Row Reason if broker items were empty
+  if (aggBuyers.length === 0 && aggSellers.length === 0 && hasSummary) {
+    reasons.push(
+      `Ringkasan Bandarmology (Top N): Bandar Value Top 3 tercatat ${formatRupiahShort(bandarValue3)} dengan status ${label}.`
+    );
+  }
+
   if (foreignFlow !== null && foreignFlow !== 0) {
     reasons.push(`Net Foreign Flow tercatat ${formatRupiahShort(foreignFlow)}.`);
   }

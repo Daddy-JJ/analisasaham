@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Filter, Sparkles, TrendingUp, ShieldAlert, RefreshCw, ArrowUpRight, ArrowDownRight, Compass, CheckCircle } from 'lucide-react';
 import { ScreenerItem, ScreenerResult } from '@/lib/screener-engine';
+import { formatDotNumber } from '@/lib/broksum-parser';
 
 interface ScreenerModalProps {
   isOpen: boolean;
@@ -64,7 +65,7 @@ export default function ScreenerModal({
     const summaryText = top5
       .map(
         (s, idx) =>
-          `${idx + 1}. **${s.ticker}** (Rp ${s.price.toLocaleString('id-ID')}, ${s.changePercent >= 0 ? '+' : ''}${s.changePercent}%) - Sinyal: ${s.signal} (RVOL: ${s.rvol}x, RSI: ${s.rsi14}, Buy 1: ${s.buyGrid.buy1}, SL: ${s.buyGrid.stopLoss}, TP: ${s.buyGrid.target1})`
+          `${idx + 1}. **${s.ticker}** (Rp ${formatDotNumber(s.price)}, ${s.changePercent >= 0 ? '+' : ''}${formatDotNumber(s.changePercent, 2)}%) - Sinyal: ${s.signal} (RVOL: ${formatDotNumber(s.rvol, 2)}x, RSI: ${formatDotNumber(s.rsi14, 1)}, Buy 1: ${formatDotNumber(s.buyGrid.buy1)}, SL: ${formatDotNumber(s.buyGrid.stopLoss)}, TP: ${formatDotNumber(s.buyGrid.target1)})`
       )
       .join('\n');
 
@@ -248,10 +249,10 @@ export default function ScreenerModal({
                           <div className="text-[10px] text-slate-400 line-clamp-1">{item.name}</div>
                         </td>
                         <td className="py-2.5 px-3 text-right">
-                          <div className="font-semibold text-slate-200">{item.price.toLocaleString('id-ID')}</div>
+                          <div className="font-semibold text-slate-200">{formatDotNumber(item.price)}</div>
                           <div className={`text-[10px] flex items-center justify-end ${isPos ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {isPos ? <ArrowUpRight className="w-3 h-3" /> : <ArrowDownRight className="w-3 h-3" />}
-                            <span>{isPos ? '+' : ''}{item.changePercent.toFixed(2)}%</span>
+                            <span>{isPos ? '+' : ''}{formatDotNumber(item.changePercent, 2)}%</span>
                           </div>
                         </td>
                         <td className="py-2.5 px-3 text-center">
@@ -262,22 +263,22 @@ export default function ScreenerModal({
                         </td>
                         <td className="py-2.5 px-3 text-center">
                           <span className={`font-semibold ${item.rvol >= 1.5 ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>
-                            {item.rvol}x
+                            {formatDotNumber(item.rvol, 2)}x
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-center">
                           <span className={`${item.rsi14 <= 35 ? 'text-emerald-400' : item.rsi14 >= 70 ? 'text-rose-400' : 'text-slate-300'}`}>
-                            {item.rsi14}
+                            {formatDotNumber(item.rsi14, 1)}
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-right text-slate-200">
-                          {item.buyGrid.buy1.toLocaleString('id-ID')}
+                          {formatDotNumber(item.buyGrid.buy1)}
                         </td>
                         <td className="py-2.5 px-3 text-right text-rose-400">
-                          {item.buyGrid.stopLoss.toLocaleString('id-ID')}
+                          {formatDotNumber(item.buyGrid.stopLoss)}
                         </td>
                         <td className="py-2.5 px-3 text-right text-emerald-400">
-                          {item.buyGrid.target1.toLocaleString('id-ID')}
+                          {formatDotNumber(item.buyGrid.target1)}
                         </td>
                         <td className="py-2.5 px-3 text-center text-slate-300">
                           {item.buyGrid.rewardRisk}

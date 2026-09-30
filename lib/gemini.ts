@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { IDX_PRO_SYSTEM_INSTRUCTION } from './system-prompt';
 import { StockQuoteData } from './yahoo-finance';
-import { parseBroksumText, formatRupiahShort } from './broksum-parser';
+import { parseBroksumText, formatRupiahShort, formatDotNumber } from './broksum-parser';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -47,16 +47,16 @@ export function buildContextPrompt(
     context += `Ticker: ${stockData.tickerClean} (${stockData.symbol})\n`;
     context += `Nama Emiten: ${stockData.name}\n`;
     context += `Tanggal Data Terakhir: ${stockData.latestDate}\n`;
-    context += `Harga Terakhir: Rp ${stockData.price.toLocaleString('id-ID')} (${stockData.change >= 0 ? '+' : ''}${stockData.change} / ${stockData.changePercent.toFixed(2)}%)\n`;
-    context += `Rentang Hari Ini: Low ${stockData.low.toLocaleString('id-ID')} - High ${stockData.high.toLocaleString('id-ID')} (Open: ${stockData.open.toLocaleString('id-ID')}, Prev Close: ${stockData.previousClose.toLocaleString('id-ID')})\n`;
-    context += `Volume: ${stockData.volume.toLocaleString('id-ID')} lot/lembar\n`;
-    context += `52-Week Range: Low ${stockData.fiftyTwoWeekLow.toLocaleString('id-ID')} - High ${stockData.fiftyTwoWeekHigh.toLocaleString('id-ID')}\n`;
+    context += `Harga Terakhir: Rp ${formatDotNumber(stockData.price)} (${stockData.change >= 0 ? '+' : ''}${formatDotNumber(stockData.change)} / ${formatDotNumber(stockData.changePercent, 2)}%)\n`;
+    context += `Rentang Hari Ini: Low ${formatDotNumber(stockData.low)} - High ${formatDotNumber(stockData.high)} (Open: ${formatDotNumber(stockData.open)}, Prev Close: ${formatDotNumber(stockData.previousClose)})\n`;
+    context += `Volume: ${formatDotNumber(stockData.volume)} lot/lembar\n`;
+    context += `52-Week Range: Low ${formatDotNumber(stockData.fiftyTwoWeekLow)} - High ${formatDotNumber(stockData.fiftyTwoWeekHigh)}\n`;
     
-    if (stockData.ma20) context += `MA20: ${stockData.ma20.toLocaleString('id-ID')}\n`;
-    if (stockData.ma50) context += `MA50: ${stockData.ma50.toLocaleString('id-ID')}\n`;
-    if (stockData.ma200) context += `MA200: ${stockData.ma200.toLocaleString('id-ID')}\n`;
-    if (stockData.rsi14) context += `RSI (14): ${stockData.rsi14}\n`;
-    if (stockData.volumeRatio) context += `Volume Ratio (vs MA20 Volume): ${stockData.volumeRatio}x\n`;
+    if (stockData.ma20) context += `MA20: ${formatDotNumber(stockData.ma20)}\n`;
+    if (stockData.ma50) context += `MA50: ${formatDotNumber(stockData.ma50)}\n`;
+    if (stockData.ma200) context += `MA200: ${formatDotNumber(stockData.ma200)}\n`;
+    if (stockData.rsi14) context += `RSI (14): ${formatDotNumber(stockData.rsi14, 1)}\n`;
+    if (stockData.volumeRatio) context += `Volume Ratio (vs MA20 Volume): ${formatDotNumber(stockData.volumeRatio, 2)}x\n`;
 
     context += `\nHISTORI EOD OHLCV (90 Hari Terakhir):\n`;
     context += stockData.csvHistory;
@@ -70,8 +70,8 @@ export function buildContextPrompt(
       context += `Status / Label Evaluasi: ${parsed.label} (Score: ${parsed.score > 0 ? '+' : ''}${parsed.score}/100, Confidence: ${parsed.confidence.toFixed(2)})\n`;
       context += `Bandar Value (Top 3): ${formatRupiahShort(parsed.bandarValue3)}\n`;
       context += `Bandar Value (Top 5): ${formatRupiahShort(parsed.bandarValue5)}\n`;
-      context += `Konsentrasi Buyer: Top 1 = ${parsed.buyerConcentration.top1}%, Top 3 = ${parsed.buyerConcentration.top3}%, Top 5 = ${parsed.buyerConcentration.top5}%\n`;
-      context += `Konsentrasi Seller: Top 1 = ${parsed.sellerConcentration.top1}%, Top 3 = ${parsed.sellerConcentration.top3}%, Top 5 = ${parsed.sellerConcentration.top5}%\n`;
+      context += `Konsentrasi Buyer: Top 1 = ${formatDotNumber(parsed.buyerConcentration.top1, 1)}%, Top 3 = ${formatDotNumber(parsed.buyerConcentration.top3, 1)}%, Top 5 = ${formatDotNumber(parsed.buyerConcentration.top5, 1)}%\n`;
+      context += `Konsentrasi Seller: Top 1 = ${formatDotNumber(parsed.sellerConcentration.top1, 1)}%, Top 3 = ${formatDotNumber(parsed.sellerConcentration.top3, 1)}%, Top 5 = ${formatDotNumber(parsed.sellerConcentration.top5, 1)}%\n`;
       if (parsed.foreignFlow !== null) {
         context += `Net Foreign Flow: ${formatRupiahShort(parsed.foreignFlow)}\n`;
       }
@@ -83,22 +83,22 @@ export function buildContextPrompt(
         const meta = b.brokerName
           ? ` (${b.brokerName} | ${b.classificationLabel || b.category} - ${b.character || ''})`
           : ` [${b.category}]`;
-        context += `${i + 1}. ${b.broker}${meta}: ${b.lot.toLocaleString('id-ID')} lot @ Avg ${b.avgPrice} (Nilai: ${formatRupiahShort(b.value)})\n`;
+        context += `${i + 1}. ${b.broker}${meta}: ${formatDotNumber(b.lot)} lot @ Avg ${formatDotNumber(b.avgPrice)} (Nilai: ${formatRupiahShort(b.value)})\n`;
       });
       context += `\nTop Net Seller:\n`;
       parsed.topSellers.forEach((s, i) => {
         const meta = s.brokerName
           ? ` (${s.brokerName} | ${s.classificationLabel || s.category} - ${s.character || ''})`
           : ` [${s.category}]`;
-        context += `${i + 1}. ${s.broker}${meta}: ${s.lot.toLocaleString('id-ID')} lot @ Avg ${s.avgPrice} (Nilai: ${formatRupiahShort(s.value)})\n`;
+        context += `${i + 1}. ${s.broker}${meta}: ${formatDotNumber(s.lot)} lot @ Avg ${formatDotNumber(s.avgPrice)} (Nilai: ${formatRupiahShort(s.value)})\n`;
       });
       if (parsed.orderbook?.hasOrderbook) {
         context += `\n--- DATA ORDERBOOK & TAPE READING (MICROSTRUCTURE) ---\n`;
-        if (parsed.orderbook.lastPrice) context += `Last Price: Rp ${parsed.orderbook.lastPrice.toLocaleString('id-ID')} (${parsed.orderbook.changePercent !== undefined ? `${parsed.orderbook.changePercent > 0 ? '+' : ''}${parsed.orderbook.changePercent}%` : ''})\n`;
-        if (parsed.orderbook.open) context += `Open: ${parsed.orderbook.open} | High: ${parsed.orderbook.high} | Low: ${parsed.orderbook.low} | Prev: ${parsed.orderbook.prev}\n`;
+        if (parsed.orderbook.lastPrice) context += `Last Price: Rp ${formatDotNumber(parsed.orderbook.lastPrice)} (${parsed.orderbook.changePercent !== undefined ? `${parsed.orderbook.changePercent > 0 ? '+' : ''}${formatDotNumber(parsed.orderbook.changePercent, 2)}%` : ''})\n`;
+        if (parsed.orderbook.open) context += `Open: ${formatDotNumber(parsed.orderbook.open)} | High: ${formatDotNumber(parsed.orderbook.high)} | Low: ${formatDotNumber(parsed.orderbook.low)} | Prev: ${formatDotNumber(parsed.orderbook.prev)}\n`;
         if (parsed.orderbook.totalBidLot && parsed.orderbook.totalOfferLot) {
-          context += `Total Bid: ${parsed.orderbook.totalBidLot.toLocaleString('id-ID')} lot vs Total Offer: ${parsed.orderbook.totalOfferLot.toLocaleString('id-ID')} lot\n`;
-          context += `Bid/Offer Ratio: ${parsed.orderbook.bidOfferRatio}x (Posture: ${parsed.orderbook.orderbookPosture})\n`;
+          context += `Total Bid: ${formatDotNumber(parsed.orderbook.totalBidLot)} lot vs Total Offer: ${formatDotNumber(parsed.orderbook.totalOfferLot)} lot\n`;
+          context += `Bid/Offer Ratio: ${formatDotNumber(parsed.orderbook.bidOfferRatio, 2)}x (Posture: ${parsed.orderbook.orderbookPosture})\n`;
         }
         if (parsed.orderbook.foreignBuy !== undefined && parsed.orderbook.foreignSell !== undefined) {
           context += `Foreign Buy: ${formatRupiahShort(parsed.orderbook.foreignBuy)} | Foreign Sell: ${formatRupiahShort(parsed.orderbook.foreignSell)} | Net Foreign Intraday: ${formatRupiahShort(parsed.orderbook.netForeignIntraday || 0)}\n`;

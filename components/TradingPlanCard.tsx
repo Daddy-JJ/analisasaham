@@ -145,7 +145,7 @@ export default function TradingPlanCard({
             <Activity className="w-3.5 h-3.5 text-cyan-400" /> RSI (14 Period):
           </span>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-slate-200">{rsi !== undefined ? rsi : 'N/A'}</span>
+            <span className="font-mono text-slate-200">{rsi !== undefined ? rsi.toString().replace('.', ',') : 'N/A'}</span>
             <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium bg-terminal-800 ${rsiColor}`}>
               {rsiLabel}
             </span>

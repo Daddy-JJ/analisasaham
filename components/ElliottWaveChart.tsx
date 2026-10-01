@@ -126,6 +126,25 @@ export default function ElliottWaveChart({
             borderVisible: false,
             wickUpColor: '#10b981',
             wickDownColor: '#f43f5e',
+            autoscaleInfoProvider: (original: any) => {
+              const res = original();
+              if (!res) return null;
+              let max = res.priceRange.maxValue;
+              let min = res.priceRange.minValue;
+              if (showProjection && ew) {
+                max = Math.max(max, ew.p3.price * 1.03, ew.p5.price * 1.05);
+              }
+              if (ew) {
+                min = Math.min(min, ew.invalidationLevel * 0.96, ew.p0.price * 0.96);
+              }
+              return {
+                priceRange: {
+                  minValue: min,
+                  maxValue: max,
+                },
+                margins: res.margins,
+              };
+            },
           })
         : chart.addSeries(lc.CandlestickSeries, {
             upColor: '#10b981',
@@ -133,6 +152,25 @@ export default function ElliottWaveChart({
             borderVisible: false,
             wickUpColor: '#10b981',
             wickDownColor: '#f43f5e',
+            autoscaleInfoProvider: (original: any) => {
+              const res = original();
+              if (!res) return null;
+              let max = res.priceRange.maxValue;
+              let min = res.priceRange.minValue;
+              if (showProjection && ew) {
+                max = Math.max(max, ew.p3.price * 1.03, ew.p5.price * 1.05);
+              }
+              if (ew) {
+                min = Math.min(min, ew.invalidationLevel * 0.96, ew.p0.price * 0.96);
+              }
+              return {
+                priceRange: {
+                  minValue: min,
+                  maxValue: max,
+                },
+                margins: res.margins,
+              };
+            },
           });
 
       const candleData = stockData.bars!.map((b) => ({
@@ -189,8 +227,9 @@ export default function ElliottWaveChart({
       histLineSeries.setData(ew.historicalPath);
 
       // 5. Projected Wave Path (Dashed Line Connecting Current -> 3 -> 4 -> 5)
+      let projLineSeries: any = null;
       if (showProjection) {
-        const projLineSeries = (chart as any).addLineSeries
+        projLineSeries = (chart as any).addLineSeries
           ? (chart as any).addLineSeries({
               color: '#a855f7', // Purple Neon
               lineWidth: 2,
@@ -208,7 +247,7 @@ export default function ElliottWaveChart({
       }
 
       // 6. Wave Markers on historical & projected points
-      const markers: any[] = [
+      const histMarkers: any[] = [
         {
           time: ew.p0.time,
           position: 'belowBar',
@@ -235,15 +274,27 @@ export default function ElliottWaveChart({
         },
       ];
 
-      if (showProjection) {
-        markers.push(
+      // Set historical markers on candleSeries
+      try {
+        if (typeof (lc as any).createSeriesMarkers === 'function') {
+          (lc as any).createSeriesMarkers(candleSeries, histMarkers);
+        } else if (typeof candleSeries.setMarkers === 'function') {
+          candleSeries.setMarkers(histMarkers);
+        }
+      } catch (e) {
+        console.warn('Historical marker render note:', e);
+      }
+
+      // Set projection markers on projLineSeries with clean spacing
+      if (showProjection && projLineSeries) {
+        const projMarkers: any[] = [
           {
             time: ew.p3.time,
             position: 'aboveBar',
             color: '#10b981',
             shape: 'arrowDown',
             text: `(3) Target ${formatDotNumber(ew.p3.price)}`,
-            size: 2,
+            size: 1.5,
           },
           {
             time: ew.p4.time,
@@ -260,19 +311,18 @@ export default function ElliottWaveChart({
             shape: 'arrowDown',
             text: `(5) Finale ${formatDotNumber(ew.p5.price)}`,
             size: 1.5,
-          }
-        );
-      }
+          },
+        ];
 
-      // Set markers (supports both v4 and v5)
-      try {
-        if (typeof (lc as any).createSeriesMarkers === 'function') {
-          (lc as any).createSeriesMarkers(candleSeries, markers);
-        } else if (typeof candleSeries.setMarkers === 'function') {
-          candleSeries.setMarkers(markers);
+        try {
+          if (typeof (lc as any).createSeriesMarkers === 'function') {
+            (lc as any).createSeriesMarkers(projLineSeries, projMarkers);
+          } else if (typeof projLineSeries.setMarkers === 'function') {
+            projLineSeries.setMarkers(projMarkers);
+          }
+        } catch (e) {
+          console.warn('Projection marker render note:', e);
         }
-      } catch (e) {
-        console.warn('Marker render note:', e);
       }
 
       // 7. Horizontal PriceLines (Fibonacci Targets & Invalidation)

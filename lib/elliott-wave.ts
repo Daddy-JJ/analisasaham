@@ -139,14 +139,17 @@ export function calculateElliottWaveProjections(
   }
 
   // Find Low 2 (P2 - pullback) after P1
-  const lowsAfterP1 = swingLows.filter((l) => l.index > p1Candidate.index);
-  let p2Candidate = lowsAfterP1.length > 0
-    ? lowsAfterP1.reduce((min, s) => (s.price < min.price ? s : min), lowsAfterP1[0])
-    : {
-        index: Math.min(n - 2, p1Candidate.index + Math.floor((n - p1Candidate.index) / 2)),
-        time: validBars[Math.min(n - 2, p1Candidate.index + Math.floor((n - p1Candidate.index) / 2))].time,
-        price: validBars[Math.min(n - 2, p1Candidate.index + Math.floor((n - p1Candidate.index) / 2))].low,
-      };
+  // Crucial: Wave 2 is the lowest point reached after P1 up to the current date!
+  let p2Candidate: { index: number; time: string; price: number };
+  const allBarsAfterP1 = validBars.slice(p1Candidate.index + 1);
+  if (allBarsAfterP1.length > 0) {
+    p2Candidate = allBarsAfterP1.reduce(
+      (min, b, offset) => (b.low < min.price ? { index: p1Candidate.index + 1 + offset, time: b.time, price: b.low } : min),
+      { index: p1Candidate.index + 1, time: allBarsAfterP1[0].time, price: allBarsAfterP1[0].low }
+    );
+  } else {
+    p2Candidate = { index: n - 1, time: latestDate, price: currentPrice };
+  }
 
   // Guard: P2 must not fall below P0 for a valid bull impulse
   if (p2Candidate.price <= p0Candidate.price) {
@@ -154,7 +157,7 @@ export function calculateElliottWaveProjections(
     p0Candidate = p2Candidate;
     const nextHigh = swingHighs.find((h) => h.index > p0Candidate.index) || { index: n - 1, time: latestDate, price: currentPrice };
     p1Candidate = nextHigh;
-    p2Candidate = { index: n - 1, time: latestDate, price: currentPrice * 0.98 };
+    p2Candidate = { index: n - 1, time: latestDate, price: Math.round(currentPrice * 0.98) };
   }
 
   const p0: WavePoint = { ...p0Candidate, label: '(0) Base', isProjected: false };
@@ -183,9 +186,20 @@ export function calculateElliottWaveProjections(
   // Wave 5 target = W4 + 1.0 * W1 (Parity with Wave 1)
   const w5TargetPrice = Math.round(w4TargetPrice + 1.0 * wave1Length);
 
-  // Invalidation: Price dropping below P2 destroys Wave 3 thesis
-  const invalidationLevel = Math.round(p2.price);
-  const invalidationReason = `Level Invalidation di Rp ${formatDotNumber(invalidationLevel)} (Swing Low Wave 2). Jika harga tembus ke bawah level ini, skenario impulsif Wave 3 gugur.`;
+  // Invalidation:
+  // If current price has bounced above P2, tactical Invalidation is placed just below P2 (2% buffer)
+  // If current price is at or testing P2, structural Invalidation is placed at Wave 0 Base
+  let invalidationLevel: number;
+  let invalidationReason: string;
+
+  if (currentPrice > p2.price) {
+    const buffer = Math.max(10, Math.round(p2.price * 0.02));
+    invalidationLevel = Math.round(p2.price - buffer);
+    invalidationReason = `Level Invalidation taktis di Rp ${formatDotNumber(invalidationLevel)} (Buffer 2% di bawah Swing Low Wave 2 Rp ${formatDotNumber(p2.price)}). Jika ditembus, skenario impulsif Wave 3 batal.`;
+  } else {
+    invalidationLevel = Math.round(p0.price);
+    invalidationReason = `Level Invalidation struktural di Rp ${formatDotNumber(invalidationLevel)} (Base Wave 0). Jika harga menembus level ini, struktur tren naik batal (Hukum 1 Frost & Prechter).`;
+  }
 
   // Time projections (trading days)
   const dateW3 = addTradingDays(latestDate, 12);
@@ -232,12 +246,18 @@ export function calculateElliottWaveProjections(
   let activeWave: ElliottWaveAnalysis['activeWave'] = 'WAVE_3_IMPULSE';
   let activeWaveLabel = 'Wave (3) Impulsif Sedang Berlangsung';
 
-  if (currentPrice < p2.price) {
+  if (currentPrice < p0.price) {
     activeWave = 'ABC_CORRECTIVE';
-    activeWaveLabel = 'Koreksi Menembus Wave 2 (Re-testing Base)';
-  } else if (currentPrice <= p1.price * 1.01) {
+    activeWaveLabel = 'Struktur Batal — Tembus di Bawah Wave 0';
+  } else if (currentPrice <= p2.price) {
+    activeWave = 'ABC_CORRECTIVE';
+    activeWaveLabel = 'Retracement Wave (2) Sedang Berlangsung (Menguji Base)';
+  } else if (currentPrice < p1.price) {
     activeWave = 'WAVE_3_IMPULSE';
-    activeWaveLabel = 'Wave (3) Awal — Menguji Breakout Puncak Wave 1';
+    activeWaveLabel = 'Wave (3) Impulsif — Memantul dari Support Wave (2)';
+  } else if (currentPrice <= p1.price * 1.02) {
+    activeWave = 'WAVE_3_IMPULSE';
+    activeWaveLabel = 'Wave (3) Breakout — Menguji Puncak Wave (1)';
   } else if (currentPrice >= w3TargetPrice * 0.96) {
     activeWave = 'WAVE_4_CONSOLIDATION';
     activeWaveLabel = 'Mendekati Puncak Wave (3) — Antisipasi Pullback Wave (4)';
@@ -258,9 +278,9 @@ export function calculateElliottWaveProjections(
     : `Peringatan: Proyeksi Wave 4 mendekati teritori Wave 1.`;
 
   // Risk / Reward Ratio to Target Wave 3
-  const risk = Math.max(1, currentPrice - invalidationLevel);
-  const reward = Math.max(1, w3TargetPrice - currentPrice);
-  const rr = (reward / risk).toFixed(2).replace('.', ',');
+  const risk = Math.max(5, currentPrice - invalidationLevel);
+  const reward = Math.max(5, w3TargetPrice - currentPrice);
+  const rr = (reward / risk).toFixed(1).replace('.', ',');
   const riskRewardRatio = `1 : ${rr}`;
 
   // Series data paths for plotting
@@ -272,12 +292,45 @@ export function calculateElliottWaveProjections(
     { time: latestDate, value: currentPrice },
   ].sort((a, b) => a.time.localeCompare(b.time));
 
-  // 2. Future projected wave path (Current -> W3 -> W4 -> W5)
+  // 2. Future projected wave path (Smooth daily interpolation over trading days)
+  // Helper to generate sequential trading days
+  const getTradingDaysRange = (startDateStr: string, totalDays: number): string[] => {
+    const days: string[] = [];
+    let current = startDateStr;
+    for (let i = 0; i < totalDays; i++) {
+      current = addTradingDays(current, 1);
+      days.push(current);
+    }
+    return days;
+  };
+
+  // Smooth wave trajectory segment with cosine easing
+  const interpolateWaveSegment = (
+    startDate: string,
+    startPrice: number,
+    tradingDaysCount: number,
+    endPrice: number
+  ): { time: string; value: number }[] => {
+    const dates = getTradingDaysRange(startDate, tradingDaysCount);
+    const points: { time: string; value: number }[] = [];
+    for (let i = 0; i < dates.length; i++) {
+      const t = (i + 1) / dates.length;
+      const easeT = 0.5 * (1 - Math.cos(t * Math.PI));
+      const price = Math.round(startPrice + (endPrice - startPrice) * easeT);
+      points.push({ time: dates[i], value: price });
+    }
+    return points;
+  };
+
+  const seg1 = interpolateWaveSegment(latestDate, currentPrice, 12, w3TargetPrice);
+  const seg2 = interpolateWaveSegment(dateW3, w3TargetPrice, 10, w4TargetPrice);
+  const seg3 = interpolateWaveSegment(dateW4, w4TargetPrice, 15, w5TargetPrice);
+
   const projectedPath = [
     { time: latestDate, value: currentPrice },
-    { time: p3.time, value: p3.price },
-    { time: p4.time, value: p4.price },
-    { time: p5.time, value: p5.price },
+    ...seg1,
+    ...seg2,
+    ...seg3,
   ];
 
   // Alternate Count (Bearish / Flat Correction)

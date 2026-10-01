@@ -173,13 +173,25 @@ export default function ElliottWaveChart({
             },
           });
 
-      const candleData = stockData.bars!.map((b) => ({
-        time: b.time,
-        open: b.open,
-        high: b.high,
-        low: b.low,
-        close: b.close,
-      }));
+      // Defensive helper: guarantee strictly unique & ascending time values for Lightweight Charts
+      const ensureStrictAscending = <T extends { time: string }>(items: T[]): T[] => {
+        if (!items || items.length === 0) return [];
+        const map = new Map<string, T>();
+        for (const item of items) {
+          map.set(item.time, item);
+        }
+        return Array.from(map.values()).sort((a, b) => a.time.localeCompare(b.time));
+      };
+
+      const candleData = ensureStrictAscending(
+        stockData.bars!.map((b) => ({
+          time: b.time,
+          open: b.open,
+          high: b.high,
+          low: b.low,
+          close: b.close,
+        }))
+      );
       candleSeries.setData(candleData);
 
       // 3. Volume Histogram Series (Optional)
@@ -201,11 +213,13 @@ export default function ElliottWaveChart({
           },
         });
 
-        const volumeData = stockData.bars!.map((b) => ({
-          time: b.time,
-          value: b.volume,
-          color: b.close >= b.open ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)',
-        }));
+        const volumeData = ensureStrictAscending(
+          stockData.bars!.map((b) => ({
+            time: b.time,
+            value: b.volume,
+            color: b.close >= b.open ? 'rgba(16, 185, 129, 0.25)' : 'rgba(244, 63, 94, 0.25)',
+          }))
+        );
         volumeSeries.setData(volumeData);
       }
 
@@ -224,7 +238,7 @@ export default function ElliottWaveChart({
             title: 'Siklus Gelombang',
           });
 
-      histLineSeries.setData(ew.historicalPath);
+      histLineSeries.setData(ensureStrictAscending(ew.historicalPath));
 
       // 5. Projected Wave Path (Dashed Line Connecting Current -> 3 -> 4 -> 5)
       let projLineSeries: any = null;
@@ -243,7 +257,7 @@ export default function ElliottWaveChart({
               title: 'Proyeksi Elliott Wave',
             });
 
-        projLineSeries.setData(ew.projectedPath);
+        projLineSeries.setData(ensureStrictAscending(ew.projectedPath));
       }
 
       // 6. Wave Markers on historical & projected points
@@ -276,10 +290,11 @@ export default function ElliottWaveChart({
 
       // Set historical markers on candleSeries
       try {
+        const cleanHistMarkers = ensureStrictAscending(histMarkers);
         if (typeof (lc as any).createSeriesMarkers === 'function') {
-          (lc as any).createSeriesMarkers(candleSeries, histMarkers);
+          (lc as any).createSeriesMarkers(candleSeries, cleanHistMarkers);
         } else if (typeof candleSeries.setMarkers === 'function') {
-          candleSeries.setMarkers(histMarkers);
+          candleSeries.setMarkers(cleanHistMarkers);
         }
       } catch (e) {
         console.warn('Historical marker render note:', e);
@@ -315,10 +330,11 @@ export default function ElliottWaveChart({
         ];
 
         try {
+          const cleanProjMarkers = ensureStrictAscending(projMarkers);
           if (typeof (lc as any).createSeriesMarkers === 'function') {
-            (lc as any).createSeriesMarkers(projLineSeries, projMarkers);
+            (lc as any).createSeriesMarkers(projLineSeries, cleanProjMarkers);
           } else if (typeof projLineSeries.setMarkers === 'function') {
-            projLineSeries.setMarkers(projMarkers);
+            projLineSeries.setMarkers(cleanProjMarkers);
           }
         } catch (e) {
           console.warn('Projection marker render note:', e);

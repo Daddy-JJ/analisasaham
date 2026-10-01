@@ -284,13 +284,20 @@ export function calculateElliottWaveProjections(
   const riskRewardRatio = `1 : ${rr}`;
 
   // Series data paths for plotting
-  // 1. Historical swing path
-  const historicalPath = [
+  // 1. Historical swing path (strictly unique timestamps)
+  const rawHistPath = [
     { time: p0.time, value: p0.price },
     { time: p1.time, value: p1.price },
     { time: p2.time, value: p2.price },
     { time: latestDate, value: currentPrice },
-  ].sort((a, b) => a.time.localeCompare(b.time));
+  ];
+  const histMap = new Map<string, number>();
+  for (const pt of rawHistPath) {
+    histMap.set(pt.time, pt.value);
+  }
+  const historicalPath = Array.from(histMap.entries())
+    .map(([time, value]) => ({ time, value }))
+    .sort((a, b) => a.time.localeCompare(b.time));
 
   // 2. Future projected wave path (Smooth daily interpolation over trading days)
   // Helper to generate sequential trading days
@@ -326,12 +333,20 @@ export function calculateElliottWaveProjections(
   const seg2 = interpolateWaveSegment(dateW3, w3TargetPrice, 10, w4TargetPrice);
   const seg3 = interpolateWaveSegment(dateW4, w4TargetPrice, 15, w5TargetPrice);
 
-  const projectedPath = [
+  const rawProjected = [
     { time: latestDate, value: currentPrice },
     ...seg1,
     ...seg2,
     ...seg3,
   ];
+
+  const projMap = new Map<string, number>();
+  for (const pt of rawProjected) {
+    projMap.set(pt.time, pt.value);
+  }
+  const projectedPath = Array.from(projMap.entries())
+    .map(([time, value]) => ({ time, value }))
+    .sort((a, b) => a.time.localeCompare(b.time));
 
   // Alternate Count (Bearish / Flat Correction)
   const alternateCount = {

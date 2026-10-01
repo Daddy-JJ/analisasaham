@@ -126,6 +126,7 @@ export default function ElliottWaveChart({
             borderVisible: false,
             wickUpColor: '#10b981',
             wickDownColor: '#f43f5e',
+            priceFormat: { type: 'price', precision: 0, minMove: 1 },
             autoscaleInfoProvider: (original: any) => {
               const res = original();
               if (!res) return null;
@@ -135,7 +136,7 @@ export default function ElliottWaveChart({
                 max = Math.max(max, ew.p3.price * 1.03, ew.p5.price * 1.05);
               }
               if (ew) {
-                min = Math.min(min, ew.invalidationLevel * 0.96, ew.p0.price * 0.96);
+                min = Math.max(1, Math.min(min, ew.invalidationLevel * 0.96, ew.p0.price * 0.96));
               }
               return {
                 priceRange: {
@@ -152,6 +153,7 @@ export default function ElliottWaveChart({
             borderVisible: false,
             wickUpColor: '#10b981',
             wickDownColor: '#f43f5e',
+            priceFormat: { type: 'price', precision: 0, minMove: 1 },
             autoscaleInfoProvider: (original: any) => {
               const res = original();
               if (!res) return null;
@@ -161,7 +163,7 @@ export default function ElliottWaveChart({
                 max = Math.max(max, ew.p3.price * 1.03, ew.p5.price * 1.05);
               }
               if (ew) {
-                min = Math.min(min, ew.invalidationLevel * 0.96, ew.p0.price * 0.96);
+                min = Math.max(1, Math.min(min, ew.invalidationLevel * 0.96, ew.p0.price * 0.96));
               }
               return {
                 priceRange: {
@@ -194,24 +196,30 @@ export default function ElliottWaveChart({
       );
       candleSeries.setData(candleData);
 
-      // 3. Volume Histogram Series (Optional)
+      // 3. Volume Histogram Series (Dedicated volume scale so it doesn't affect price axis)
       if (showVolume) {
         const volumeSeries = (chart as any).addHistogramSeries
           ? (chart as any).addHistogramSeries({
               priceFormat: { type: 'volume' },
-              priceScaleId: '', // overlay
+              priceScaleId: 'volume',
             })
           : chart.addSeries(lc.HistogramSeries, {
               priceFormat: { type: 'volume' },
-              priceScaleId: '',
+              priceScaleId: 'volume',
             });
 
-        volumeSeries.priceScale().applyOptions({
-          scaleMargins: {
-            top: 0.8,
-            bottom: 0,
-          },
-        });
+        try {
+          if (chart.priceScale('volume')) {
+            chart.priceScale('volume').applyOptions({
+              scaleMargins: {
+                top: 0.8,
+                bottom: 0,
+              },
+            });
+          }
+        } catch (e) {
+          // fallback if custom priceScale isn't available
+        }
 
         const volumeData = ensureStrictAscending(
           stockData.bars!.map((b) => ({

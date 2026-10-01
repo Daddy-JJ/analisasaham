@@ -7,8 +7,9 @@ import ChatInterface, { Message } from '@/components/ChatInterface';
 import BroksumModal from '@/components/BroksumModal';
 import ScreenerModal from '@/components/ScreenerModal';
 import TradingViewWidget from '@/components/TradingViewWidget';
+import ElliottWaveChart from '@/components/ElliottWaveChart';
 import { StockQuoteData } from '@/lib/yahoo-finance';
-import { MessageSquare, LineChart, Columns } from 'lucide-react';
+import { MessageSquare, LineChart, Columns, Compass } from 'lucide-react';
 
 export default function Home() {
   const [currentTicker, setCurrentTicker] = useState('BBCA');
@@ -19,7 +20,7 @@ export default function Home() {
   const [broksumText, setBroksumText] = useState('');
   const [isBroksumModalOpen, setIsBroksumModalOpen] = useState(false);
   const [isScreenerModalOpen, setIsScreenerModalOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'chat' | 'chart' | 'split'>('chat');
+  const [viewMode, setViewMode] = useState<'chat' | 'wave' | 'chart' | 'split'>('chat');
 
   // Fetch real-time market data whenever ticker changes
   const loadMarketData = useCallback(async (ticker: string) => {
@@ -54,8 +55,8 @@ export default function Home() {
   const handleSendMessage = async (text: string) => {
     if (!text.trim() || isLoadingChat) return;
 
-    // Switch view mode to chat or split if user is on chart-only mode so they see the AI response
-    if (viewMode === 'chart') {
+    // Switch view mode to split if user is on chart-only or wave-only mode so they see the AI response
+    if (viewMode === 'chart' || viewMode === 'wave') {
       setViewMode('split');
     }
 
@@ -194,13 +195,13 @@ export default function Home() {
         {/* Left Column: Chat and/or TradingView Chart (8 cols) */}
         <section className="lg:col-span-8 flex flex-col space-y-3">
           {/* View Mode Switcher */}
-          <div className="flex items-center justify-between bg-terminal-900/60 p-1.5 rounded-lg border border-terminal-800">
-            <div className="flex items-center gap-1">
+          <div className="flex items-center justify-between bg-terminal-900/60 p-1.5 rounded-lg border border-terminal-800 flex-wrap gap-2">
+            <div className="flex items-center gap-1 flex-wrap">
               <button
                 onClick={() => setViewMode('chat')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                   viewMode === 'chat'
-                    ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-950'
+                    ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-950 font-semibold'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-terminal-850'
                 }`}
               >
@@ -209,32 +210,45 @@ export default function Home() {
               </button>
 
               <button
+                onClick={() => setViewMode('wave')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  viewMode === 'wave'
+                    ? 'bg-purple-600 text-white shadow-sm shadow-purple-950 font-semibold'
+                    : 'text-purple-300 hover:text-white hover:bg-terminal-850'
+                }`}
+                title="Plotting Proyeksi Gelombang Elliott Wave 1-2-3-4-5 & Fibonacci Targets"
+              >
+                <Compass className="w-3.5 h-3.5 text-purple-300" />
+                <span>Proyeksi Elliott Wave</span>
+              </button>
+
+              <button
                 onClick={() => setViewMode('chart')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                   viewMode === 'chart'
-                    ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-950'
+                    ? 'bg-amber-600 text-white shadow-sm shadow-amber-950 font-semibold'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-terminal-850'
                 }`}
               >
                 <LineChart className="w-3.5 h-3.5 text-amber-400" />
-                <span>Chart TradingView</span>
+                <span>TradingView Live</span>
               </button>
 
               <button
                 onClick={() => setViewMode('split')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                   viewMode === 'split'
-                    ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-950'
+                    ? 'bg-cyan-700 text-white shadow-sm shadow-cyan-950 font-semibold'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-terminal-850'
                 }`}
               >
-                <Columns className="w-3.5 h-3.5 text-purple-400" />
+                <Columns className="w-3.5 h-3.5 text-cyan-300" />
                 <span>Split View (Chat + Chart)</span>
               </button>
             </div>
 
             <div className="text-[11px] font-mono text-slate-400 pr-2 hidden sm:block">
-              Simbol Chart: <span className="text-amber-400 font-bold">{currentTicker === 'IHSG' ? 'IDX:COMPOSITE' : `IDX:${currentTicker}`}</span>
+              Simbol: <span className="text-amber-400 font-bold">{currentTicker === 'IHSG' ? 'IDX:COMPOSITE' : `IDX:${currentTicker}`}</span>
             </div>
           </div>
 
@@ -249,6 +263,17 @@ export default function Home() {
             />
           )}
 
+          {viewMode === 'wave' && (
+            <div className="min-h-[560px]">
+              <ElliottWaveChart
+                stockData={stockData}
+                currentTicker={currentTicker}
+                onSendToChat={handleSendMessage}
+                height={540}
+              />
+            </div>
+          )}
+
           {viewMode === 'chart' && (
             <div className="h-[calc(100vh-190px)] min-h-[500px]">
               <TradingViewWidget ticker={currentTicker} height="100%" />
@@ -257,8 +282,13 @@ export default function Home() {
 
           {viewMode === 'split' && (
             <div className="flex flex-col space-y-3">
-              <div className="h-[360px]">
-                <TradingViewWidget ticker={currentTicker} height="100%" />
+              <div className="min-h-[420px]">
+                <ElliottWaveChart
+                  stockData={stockData}
+                  currentTicker={currentTicker}
+                  onSendToChat={handleSendMessage}
+                  height={400}
+                />
               </div>
               <div>
                 <ChatInterface
@@ -279,6 +309,7 @@ export default function Home() {
             stockData={stockData}
             isLoadingData={isLoadingData}
             onAnalyze={handleSendMessage}
+            onViewWaveChart={() => setViewMode('wave')}
           />
 
           {/* Quick Info Box */}

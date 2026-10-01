@@ -9,12 +9,14 @@ interface TradingPlanCardProps {
   stockData: StockQuoteData | null;
   isLoadingData: boolean;
   onAnalyze: (prompt: string) => void;
+  onViewWaveChart?: () => void;
 }
 
 export default function TradingPlanCard({
   stockData,
   isLoadingData,
   onAnalyze,
+  onViewWaveChart,
 }: TradingPlanCardProps) {
   if (isLoadingData) {
     return (
@@ -181,6 +183,16 @@ export default function TradingPlanCard({
 
       {/* Quick Launch Buttons for this Stock */}
       <div className="mt-4 pt-3 border-t border-terminal-800/80 space-y-2">
+        {onViewWaveChart && (
+          <button
+            onClick={onViewWaveChart}
+            className="w-full flex items-center justify-center gap-2 py-2 px-3 text-xs font-semibold rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-md shadow-purple-950/40 transition-all border border-purple-500/30"
+          >
+            <Compass className="w-3.5 h-3.5" />
+            <span>Plot Proyeksi Wave (1-2-3-4-5)</span>
+          </button>
+        )}
+
         <button
           onClick={() => onAnalyze(`${stockData.tickerClean} fase 1 wave count invalidation`)}
           className="w-full flex items-center justify-center gap-2 py-2 px-3 text-xs font-medium rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-950/40 transition-colors"

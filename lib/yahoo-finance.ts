@@ -19,6 +19,7 @@ export interface StockQuoteData {
   volumeRatio?: number;
   csvHistory: string;
   latestDate: string;
+  bars?: { time: string; open: number; high: number; low: number; close: number; volume: number }[];
 }
 
 export function normalizeTicker(tickerInput: string): string {
@@ -188,5 +189,13 @@ export async function fetchStockData(tickerInput: string): Promise<StockQuoteDat
     volumeRatio,
     csvHistory,
     latestDate: latestBar.date,
+    bars: validBars.map((b) => ({
+      time: b.date,
+      open: b.open,
+      high: b.high,
+      low: b.low,
+      close: b.close,
+      volume: b.volume,
+    })),
   };
 }

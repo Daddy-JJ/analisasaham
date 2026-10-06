@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { IDX_PRO_SYSTEM_INSTRUCTION } from './system-prompt';
 import { StockQuoteData } from './yahoo-finance';
 import { parseBroksumText, formatRupiahShort, formatDotNumber } from './broksum-parser';
+import { IdxBandarmologyData, formatIdrCompact } from './idx-terminal';
 
 export interface ChatMessage {
   role: 'user' | 'assistant';
@@ -39,9 +40,51 @@ export function buildContextPrompt(
   userPrompt: string,
   stockData?: StockQuoteData | null,
   broksumText?: string | null,
-  maxlongData?: any | null
+  maxlongData?: any | null,
+  idxData?: IdxBandarmologyData | null
 ): string {
   let context = '';
+
+  if (idxData) {
+    context += `\n--- DATA LIVE TERVERIFIKASI IDX EOD: BROKER SUMMARY, BANDARMOLOGI & VOLUME ---\n`;
+    context += `Sumber: Bursa Efek Indonesia (IDX EOD Data Terminal)\n`;
+    context += `Ticker: ${idxData.ticker} | Tanggal Data: ${idxData.date}\n`;
+    context += `Status Akumulasi/Distribusi Bandar: ${idxData.bandarSide} (Nilai Net Bandar: ${formatIdrCompact(idxData.bandarValue)})\n`;
+    context += `Konsentrasi Bandar (Top 3/5): ${idxData.brokerConcentrationPct.toFixed(1)}%\n`;
+    const streakInfo = idxData.foreignStreakLength > 1
+      ? ` (${idxData.foreignStreakLength} hari berturut-turut ${idxData.foreignStreakSide})`
+      : '';
+    context += `Foreign Flow: Net ${idxData.netForeignValue >= 0 ? 'Buy' : 'Sell'} ${formatIdrCompact(idxData.netForeignValue)}${streakInfo} (Total Foreign Buy: ${formatIdrCompact(idxData.foreignBuyValue)} vs Sell: ${formatIdrCompact(idxData.foreignSellValue)})\n`;
+    context += `Analisis Volume: ${(idxData.volume.latest / 100).toLocaleString('id-ID')} lot (${idxData.volume.ratio.toFixed(2)}x rata-rata 20 hari - Sinyal: ${idxData.volume.signal})\n`;
+
+    context += `\nTop 5 Broker Pembeli (Net Buyers):\n`;
+    idxData.topBuyers.slice(0, 5).forEach((b, idx) => {
+      const netLotStr = Math.abs(b.netLot || b.volumeLot).toLocaleString('id-ID');
+      const avgStr = b.avgPrice.toLocaleString('id-ID');
+      const valStr = formatIdrCompact(Math.abs(b.netValue || b.value));
+      const groupTag = b.isForeign ? ' [ASING]' : '';
+      context += `${idx + 1}. ${b.code}: Net Buy ${netLotStr} lot @ Avg Rp ${avgStr} (${valStr})${groupTag}\n`;
+    });
+
+    context += `\nTop 5 Broker Penjual (Net Sellers):\n`;
+    idxData.topSellers.slice(0, 5).forEach((s, idx) => {
+      const netLotStr = Math.abs(s.netLot || s.volumeLot).toLocaleString('id-ID');
+      const avgStr = s.avgPrice.toLocaleString('id-ID');
+      const valStr = formatIdrCompact(-Math.abs(s.netValue || s.value));
+      const groupTag = s.isForeign ? ' [ASING]' : '';
+      context += `${idx + 1}. ${s.code}: Net Sell ${netLotStr} lot @ Avg Rp ${avgStr} (${valStr})${groupTag}\n`;
+    });
+
+    if (idxData.multiday && (idxData.multiday.accumulators.length > 0 || idxData.multiday.distributors.length > 0)) {
+      context += `\nHistori Akumulasi Multi-Day (${idxData.multiday.days} Hari Terakhir):\n`;
+      const accList = idxData.multiday.accumulators.slice(0, 3).map((a) => `${a.code} (${formatIdrCompact(a.net)})`).join(', ');
+      const distList = idxData.multiday.distributors.slice(0, 3).map((d) => `${d.code} (${formatIdrCompact(d.net)})`).join(', ');
+      if (accList) context += `- Top Akumulator: ${accList}\n`;
+      if (distList) context += `- Top Distributor: ${distList}\n`;
+    }
+    context += `\nInstruksi untuk AI: Gunakan data Broker Summary & Bandarmologi resmi di atas sebagai dasar analisis aliran dana (Smart Money), konfirmasi sinyal technical/Elliott Wave, dan tentukan level harga kunci (Average Price broker) sebagai acuan support/resistance bandar.\n`;
+    context += `--- AKHIR DATA RESMI IDX TERMINAL ---\n\n`;
+  }
 
   if (maxlongData) {
     context += `\n--- DATA LIVE RESMI MAXLONG EOD / BANDARMOLOGY (TOKEN AUTO-REFRESH) ---\n`;
@@ -131,8 +174,8 @@ export function buildContextPrompt(
       context += `${broksumText.trim()}\n`;
       context += `--- AKHIR DATA BROKER SUMMARY ---\n\n`;
     }
-  } else if (stockData) {
-    context += `\n[CATATAN DATA: Pengguna belum menempelkan tabel Broker Summary (Broksum) khusus. Lakukan analisa teknikal & Elliott Wave berdasarkan data harga/volume di atas, dan nyatakan bahwa broksum belum dilampirkan].\n\n`;
+  } else if (!broksumText && !idxData && stockData) {
+    context += `\n[CATATAN DATA: Pengguna belum menempelkan tabel Broker Summary (Broksum) khusus dan data EOD belum tersedia. Lakukan analisa teknikal & Elliott Wave berdasarkan data harga/volume di atas, dan nyatakan bahwa broksum belum dilampirkan].\n\n`;
   }
 
   return `${context}Permintaan Pengguna: "${userPrompt}"`;

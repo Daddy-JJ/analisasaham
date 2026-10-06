@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getGeminiModel, buildContextPrompt, SUPPORTED_MODELS } from '@/lib/gemini';
 import { fetchStockData, normalizeTicker, StockQuoteData } from '@/lib/yahoo-finance';
 import { fetchBandarmologyFactors } from '@/lib/maxlong-client';
+import { fetchIdxTickerData, formatIdxBroksumToText, IdxBandarmologyData } from '@/lib/idx-terminal';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,8 @@ export async function POST(request: NextRequest) {
     const resolvedTicker = inputTicker ? inputTicker.trim() : detectTicker(prompt);
     let stockData: StockQuoteData | null = null;
     let maxlongData: any = null;
+    let idxData: IdxBandarmologyData | null = null;
+    let effectiveBroksumText = broksumText;
 
     if (resolvedTicker) {
       try {
@@ -40,7 +43,7 @@ export async function POST(request: NextRequest) {
         console.warn(`Could not fetch data for ticker ${resolvedTicker}:`, err.message);
       }
 
-      // If Maxlong is connected, retrieve real-time bandarmology factors
+      // Priority 1: Private Maxlong factors (if authenticated with API Key/OAuth)
       try {
         const mlRes = await fetchBandarmologyFactors(resolvedTicker);
         if (mlRes.ok && mlRes.data) {
@@ -49,9 +52,20 @@ export async function POST(request: NextRequest) {
       } catch (e) {
         // ignore if not connected
       }
+
+      // Priority 2: Public IDX Terminal (Zero-Auth Live Broker Summary, Bandarmology, Volume)
+      try {
+        idxData = await fetchIdxTickerData(resolvedTicker);
+        // If user didn't manually provide broksumText, automatically populate from live IDX EOD
+        if ((!effectiveBroksumText || effectiveBroksumText.trim().length === 0) && idxData) {
+          effectiveBroksumText = formatIdxBroksumToText(idxData);
+        }
+      } catch (e: any) {
+        console.warn(`Could not fetch IDX terminal data for ${resolvedTicker}:`, e.message);
+      }
     }
 
-    const enrichedPrompt = buildContextPrompt(prompt, stockData, broksumText, maxlongData);
+    const enrichedPrompt = buildContextPrompt(prompt, stockData, effectiveBroksumText, maxlongData, idxData);
 
     // Filter unique models to try in order
     const candidateModels = Array.from(new Set(SUPPORTED_MODELS));

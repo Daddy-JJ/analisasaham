@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   X,
   FileSpreadsheet,
@@ -187,14 +187,52 @@ export default function BroksumModal({
     return parseBroksumText(inputText, currentTicker);
   }, [inputText, currentTicker]);
 
-  // Synchronize internal state when modal opens with existing text
+  const [isLoadingLiveBroksum, setIsLoadingLiveBroksum] = useState(false);
+  const [liveBroksumSuccess, setLiveBroksumSuccess] = useState<string | null>(null);
+
+  const handleFetchLiveBroksum = useCallback(async (tickerToFetch?: string) => {
+    const ticker = tickerToFetch || currentTicker;
+    const clean = ticker ? ticker.trim().toUpperCase().replace(/\.JK$/, '').replace(/^\^/, '') : '';
+    if (!clean || clean === 'IHSG' || clean === 'JKSE') {
+      setOcrError('Pilih emiten saham spesifik (selain IHSG) untuk memuat data Broker Summary.');
+      return;
+    }
+
+    setIsLoadingLiveBroksum(true);
+    setOcrError(null);
+
+    try {
+      const res = await fetch(`/api/broksum/live?ticker=${encodeURIComponent(clean)}`);
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.message || 'Gagal mengambil data live broksum');
+      }
+
+      if (json.broksumText) {
+        setInputText(json.broksumText);
+        setLiveBroksumSuccess(`Berhasil memuat data Broker Summary EOD ${clean} (${json.data?.date || ''}) dari IDX Terminal!`);
+        setTimeout(() => setLiveBroksumSuccess(null), 5000);
+      }
+    } catch (err: any) {
+      setOcrError(err.message || 'Gagal menghubungi server IDX Terminal.');
+    } finally {
+      setIsLoadingLiveBroksum(false);
+    }
+  }, [currentTicker]);
+
+  // Synchronize internal state when modal opens with existing text or auto-fetch if empty
   useEffect(() => {
     if (isOpen) {
-      setInputText(broksumText);
+      if (broksumText && broksumText.trim()) {
+        setInputText(broksumText);
+      } else if (currentTicker && currentTicker !== 'IHSG' && currentTicker !== 'JKSE') {
+        // Auto-fetch if currently empty
+        handleFetchLiveBroksum(currentTicker);
+      }
       setOcrError(null);
       setDetectedTicker(null);
     }
-  }, [isOpen, broksumText]);
+  }, [isOpen, broksumText, currentTicker, handleFetchLiveBroksum]);
 
   // Image processor for file uploads or clipboard pastes with dedicated mode
   const processImageFile = async (file: File, target: 'broksum' | 'orderbook') => {
@@ -802,12 +840,38 @@ export default function BroksumModal({
             </div>
           )}
 
+          {/* Live Broksum Success Notification */}
+          {liveBroksumSuccess && (
+            <div className="bg-emerald-950/70 border border-emerald-600/80 rounded-lg p-2.5 flex items-center justify-between text-xs text-emerald-300 animate-fadeIn">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{liveBroksumSuccess}</span>
+              </div>
+              <span className="text-[10px] text-emerald-400 font-mono">Status: Auto-Parsed</span>
+            </div>
+          )}
+
           {/* Preset Buttons */}
           <div className="flex items-center justify-between text-xs flex-wrap gap-2 pt-1">
             <span className="text-slate-400 text-[11px] font-medium flex items-center gap-1">
-              <Layers className="w-3.5 h-3.5 text-amber-400" /> Contoh & Referensi:
+              <Layers className="w-3.5 h-3.5 text-amber-400" /> Sumber & Referensi:
             </span>
             <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => handleFetchLiveBroksum()}
+                disabled={isLoadingLiveBroksum}
+                className="px-2.5 py-1 text-[11px] rounded bg-gradient-to-r from-emerald-700 to-teal-700 hover:from-emerald-600 hover:to-teal-600 text-white font-semibold shadow-sm border border-emerald-500/50 flex items-center gap-1.5 transition-all disabled:opacity-50"
+                title={`Tarik otomatis data Broker Summary EOD resmi untuk ${currentTicker} dari IDX Terminal`}
+              >
+                {isLoadingLiveBroksum ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                )}
+                <span>Tarik Live EOD ({currentTicker})</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setShowBrokerRef(!showBrokerRef)}

@@ -9,6 +9,7 @@ import ScreenerModal from '@/components/ScreenerModal';
 import TradingViewWidget from '@/components/TradingViewWidget';
 import ElliottWaveChart from '@/components/ElliottWaveChart';
 import MaxlongConnectModal from '@/components/MaxlongConnectModal';
+import BandarmologyWidget from '@/components/BandarmologyWidget';
 import { StockQuoteData } from '@/lib/yahoo-finance';
 import { MessageSquare, LineChart, Columns, Compass } from 'lucide-react';
 
@@ -339,6 +340,12 @@ export default function Home() {
             isLoadingData={isLoadingData}
             onAnalyze={handleSendMessage}
             onViewWaveChart={() => setViewMode('wave')}
+          />
+
+          <BandarmologyWidget
+            currentTicker={currentTicker}
+            onOpenBroksumModal={() => setIsBroksumModalOpen(true)}
+            onAnalyzeWithAi={handleSendMessage}
           />
 
           {/* Quick Info Box */}

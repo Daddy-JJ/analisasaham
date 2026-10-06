@@ -282,11 +282,10 @@ export async function fetchLiveMaxlongScreener(): Promise<ScreenerResult | null>
       const change = price * (changePct / 100);
       const rrRatio = r.rewardRiskBuy1 ? `${Number(r.rewardRiskBuy1).toFixed(1)}:1` : '2.5:1';
 
-      // Detect which of the 3 target scanners qualify:
+      // Detect which of the 3 target scanners qualify strictly based on authentic scanner signals:
       const matchedScanners: string[] = [];
       const sigUpper = (r.signal || '').toUpperCase();
       const activeSigUpper = (r.activeSignals || '').toUpperCase();
-      const alphaStatusUpper = (r.alphaStatus || '').toUpperCase();
 
       // Scanner 1: G ACC (Gamma Accumulation)
       const isGAcc = sigUpper === 'G ACC' || activeSigUpper.includes('G ACC');
@@ -295,26 +294,20 @@ export async function fetchLiveMaxlongScreener(): Promise<ScreenerResult | null>
       }
 
       // Scanner 2: Breakout (Beta Breakout)
-      const isBreakout =
-        sigUpper === 'BETA BREAKOUT' ||
-        activeSigUpper.includes('BREAKOUT') ||
-        r.risenRecentUpBreak === 'TRUE';
+      const isBreakout = sigUpper === 'BETA BREAKOUT' || activeSigUpper.includes('BETA BREAKOUT');
       if (isBreakout) {
-        matchedScanners.push('BREAKOUT');
+        matchedScanners.push('BETA BREAKOUT');
       }
 
       // Scanner 3: Gamma (Smart Gamma)
-      const isGamma =
-        sigUpper === 'SMART GAMMA' ||
-        activeSigUpper.includes('GAMMA') ||
-        alphaStatusUpper.includes('GAMMA');
+      const isGamma = sigUpper === 'SMART GAMMA' || activeSigUpper.includes('SMART GAMMA');
       if (isGamma) {
-        matchedScanners.push('GAMMA');
+        matchedScanners.push('SMART GAMMA');
       }
 
       const count = matchedScanners.length;
       const isConfluence = count >= 2;
-      const confluenceLabel = count === 3 ? '3x CONFLUENCE' : count === 2 ? '2x CONFLUENCE' : 'SINGLE';
+      const confluenceLabel = isConfluence ? `${count}x CONFLUENCE` : 'SINGLE';
 
       return {
         ticker: r.ticker,

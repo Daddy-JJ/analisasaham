@@ -228,8 +228,16 @@ export default function ScreenerModal({
           ) : filteredSignals.length === 0 ? (
             <div className="text-center py-20 space-y-2 text-slate-400">
               <Filter className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-              <p className="text-sm font-medium text-slate-300">Tidak ada sinyal aktif pada kategori ini hari ini.</p>
-              <p className="text-xs text-slate-500">Pasar mungkin sedang berkonsolidasi atau di bawah tekanan.</p>
+              <p className="text-sm font-medium text-slate-300">
+                {filterType === 'CONFLUENCE'
+                  ? 'Tidak ada saham tumpang tindih (Confluence) antar-scanner hari ini.'
+                  : 'Tidak ada sinyal aktif pada kategori ini hari ini.'}
+              </p>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                {filterType === 'CONFLUENCE'
+                  ? 'Seluruh 14 saham aktif terdistribusi murni pada setup utamanya masing-masing (7 G ACC, 5 Breakout, 2 Gamma). Saham akan otomatis muncul di sini jika memicu multi-scanner bersamaan.'
+                  : 'Pasar mungkin sedang berkonsolidasi atau di bawah tekanan.'}
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-terminal-800">

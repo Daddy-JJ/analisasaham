@@ -8,6 +8,7 @@ import BroksumModal from '@/components/BroksumModal';
 import ScreenerModal from '@/components/ScreenerModal';
 import TradingViewWidget from '@/components/TradingViewWidget';
 import ElliottWaveChart from '@/components/ElliottWaveChart';
+import MaxlongConnectModal from '@/components/MaxlongConnectModal';
 import { StockQuoteData } from '@/lib/yahoo-finance';
 import { MessageSquare, LineChart, Columns, Compass } from 'lucide-react';
 
@@ -20,6 +21,8 @@ export default function Home() {
   const [broksumText, setBroksumText] = useState('');
   const [isBroksumModalOpen, setIsBroksumModalOpen] = useState(false);
   const [isScreenerModalOpen, setIsScreenerModalOpen] = useState(false);
+  const [isMaxlongModalOpen, setIsMaxlongModalOpen] = useState(false);
+  const [maxlongConnected, setMaxlongConnected] = useState(false);
   const [viewMode, setViewMode] = useState<'chat' | 'wave' | 'chart' | 'split'>('chat');
 
   // Fetch real-time market data whenever ticker changes
@@ -40,9 +43,33 @@ export default function Home() {
     }
   }, []);
 
+  const checkMaxlongStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/maxlong/status');
+      const json = await res.json();
+      if (json.ok && json.status) {
+        setMaxlongConnected(json.status.connected);
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     loadMarketData(currentTicker);
-  }, [currentTicker, loadMarketData]);
+    checkMaxlongStatus();
+  }, [currentTicker, loadMarketData, checkMaxlongStatus]);
+
+  // Handle returning from OAuth callback redirect
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('auth') === 'maxlong_connected') {
+        checkMaxlongStatus();
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    }
+  }, [checkMaxlongStatus]);
 
   const handleSelectTicker = (newTicker: string) => {
     const clean = newTicker.trim().toUpperCase();
@@ -186,6 +213,8 @@ export default function Home() {
         onTriggerPhase={handleSendMessage}
         onOpenBroksumModal={() => setIsBroksumModalOpen(true)}
         onOpenScreenerModal={() => setIsScreenerModalOpen(true)}
+        onOpenMaxlongModal={() => setIsMaxlongModalOpen(true)}
+        maxlongConnected={maxlongConnected}
         hasBroksumData={!!broksumText.trim()}
         isLoading={isLoadingChat}
       />
@@ -344,6 +373,15 @@ export default function Home() {
         onClose={() => setIsScreenerModalOpen(false)}
         onSelectAndAnalyze={handleSelectAndAnalyze}
         onSendToChat={handleSendMessage}
+      />
+
+      {/* Maxlong OAuth 2.1 & Token Auto-Refresh Modal */}
+      <MaxlongConnectModal
+        isOpen={isMaxlongModalOpen}
+        onClose={() => {
+          setIsMaxlongModalOpen(false);
+          checkMaxlongStatus();
+        }}
       />
     </div>
   );

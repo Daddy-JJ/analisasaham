@@ -38,9 +38,17 @@ export function getGeminiModel(modelName?: string) {
 export function buildContextPrompt(
   userPrompt: string,
   stockData?: StockQuoteData | null,
-  broksumText?: string | null
+  broksumText?: string | null,
+  maxlongData?: any | null
 ): string {
   let context = '';
+
+  if (maxlongData) {
+    context += `\n--- DATA LIVE RESMI MAXLONG EOD / BANDARMOLOGY (TOKEN AUTO-REFRESH) ---\n`;
+    context += `Data terverifikasi langsung dari server Maxlong:\n`;
+    context += typeof maxlongData === 'string' ? maxlongData : JSON.stringify(maxlongData, null, 2);
+    context += `\n--- AKHIR DATA RESMI MAXLONG ---\n\n`;
+  }
 
   if (stockData) {
     context += `\n--- DATA PASAR NYATA DARI YAHOO FINANCE ---\n`;

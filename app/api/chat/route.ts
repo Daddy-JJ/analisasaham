@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getGeminiModel, buildContextPrompt, SUPPORTED_MODELS } from '@/lib/gemini';
 import { fetchStockData, normalizeTicker, StockQuoteData } from '@/lib/yahoo-finance';
+import { fetchBandarmologyFactors } from '@/lib/maxlong-client';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,7 @@ export async function POST(request: NextRequest) {
 
     const resolvedTicker = inputTicker ? inputTicker.trim() : detectTicker(prompt);
     let stockData: StockQuoteData | null = null;
+    let maxlongData: any = null;
 
     if (resolvedTicker) {
       try {
@@ -37,9 +39,19 @@ export async function POST(request: NextRequest) {
       } catch (err: any) {
         console.warn(`Could not fetch data for ticker ${resolvedTicker}:`, err.message);
       }
+
+      // If Maxlong is connected, retrieve real-time bandarmology factors
+      try {
+        const mlRes = await fetchBandarmologyFactors(resolvedTicker);
+        if (mlRes.ok && mlRes.data) {
+          maxlongData = mlRes.data;
+        }
+      } catch (e) {
+        // ignore if not connected
+      }
     }
 
-    const enrichedPrompt = buildContextPrompt(prompt, stockData, broksumText);
+    const enrichedPrompt = buildContextPrompt(prompt, stockData, broksumText, maxlongData);
 
     // Filter unique models to try in order
     const candidateModels = Array.from(new Set(SUPPORTED_MODELS));

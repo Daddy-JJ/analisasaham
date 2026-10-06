@@ -309,6 +309,23 @@ export async function fetchLiveMaxlongScreener(): Promise<ScreenerResult | null>
       const isConfluence = count >= 2;
       const confluenceLabel = isConfluence ? `${count}x CONFLUENCE` : 'SINGLE';
 
+      const entry = r.buy1 || price;
+      const sl = r.stopLoss || Math.round(price * 0.90);
+      const tp1 = r.tp1 || Math.round(price * 1.15);
+      const tp2 = r.tp2 || Math.round(price * 1.30);
+
+      const riskPts = entry - sl;
+      const slPercent = entry > 0 ? ((sl - entry) / entry) * 100 : -10;
+      const tp1Percent = entry > 0 ? ((tp1 - entry) / entry) * 100 : 15;
+      const tp2Percent = entry > 0 ? ((tp2 - entry) / entry) * 100 : 30;
+
+      // Calculate R:R mathematically: Target 1 vs SL (1.5R) and Target 2 vs SL (3.0R)
+      const rr1Val = riskPts > 0 ? (tp1 - entry) / riskPts : 1.5;
+      const rr2Val = riskPts > 0 ? (tp2 - entry) / riskPts : 3.0;
+
+      const rrTp1 = `1:${rr1Val.toFixed(1)}`;
+      const rrTp2 = `1:${rr2Val.toFixed(1)}`;
+
       return {
         ticker: r.ticker,
         name: kompas?.name || `${r.ticker} Tbk`,
@@ -326,12 +343,16 @@ export async function fetchLiveMaxlongScreener(): Promise<ScreenerResult | null>
         grade: (r.score || 0) >= 5200 ? 'A+ ELITE' : (r.score || 0) >= 4500 ? 'A HIGH QUALITY' : 'B WATCHLIST',
         score: r.score || 0,
         buyGrid: {
-          buy1: r.buy1 || price,
+          buy1: entry,
           buy2: r.buy2 || Math.round(price * 0.96),
-          stopLoss: r.stopLoss || Math.round(price * 0.90),
-          target1: r.tp1 || Math.round(price * 1.15),
-          target2: r.tp2 || Math.round(price * 1.30),
-          rewardRisk: rrRatio,
+          stopLoss: sl,
+          target1: tp1,
+          target2: tp2,
+          rewardRisk: rrTp1,
+          slPercent,
+          tp1Percent,
+          tp2Percent,
+          rewardRiskTp2: rrTp2,
         },
         confluence: {
           count,

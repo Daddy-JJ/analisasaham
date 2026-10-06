@@ -66,11 +66,11 @@ export default function ScreenerModal({
     const summaryText = top5
       .map(
         (s, idx) =>
-          `${idx + 1}. **${s.ticker}** (Rp ${formatDotNumber(s.price)}, ${s.changePercent >= 0 ? '+' : ''}${formatDotNumber(s.changePercent, 2)}%) - Sinyal: ${s.signal}${s.confluence?.isConfluence ? ` [🔥 ${s.confluence.label}: ${s.confluence.scanners.join(' + ')}]` : ''} (RVOL: ${formatDotNumber(s.rvol, 2)}x, RSI: ${formatDotNumber(s.rsi14, 1)}, Buy 1: ${formatDotNumber(s.buyGrid.buy1)}, SL: ${formatDotNumber(s.buyGrid.stopLoss)}, TP: ${formatDotNumber(s.buyGrid.target1)})`
+          `${idx + 1}. **${s.ticker}** (Rp ${formatDotNumber(s.price)}, ${s.changePercent >= 0 ? '+' : ''}${formatDotNumber(s.changePercent, 2)}%) - Sinyal: ${s.signal}${s.confluence?.isConfluence ? ` [🔥 ${s.confluence.label}]` : ''} (RVOL: ${formatDotNumber(s.rvol, 2)}x, RSI: ${formatDotNumber(s.rsi14, 1)}, Buy 1: ${formatDotNumber(s.buyGrid.buy1)}, SL: ${formatDotNumber(s.buyGrid.stopLoss)} [${formatDotNumber(s.buyGrid.slPercent || 0, 1)}%], TP1: ${formatDotNumber(s.buyGrid.target1)} [+${formatDotNumber(s.buyGrid.tp1Percent || 0, 1)}%, R:R ${s.buyGrid.rewardRisk}], TP2: ${formatDotNumber(s.buyGrid.target2)} [+${formatDotNumber(s.buyGrid.tp2Percent || 0, 1)}%, R:R ${s.buyGrid.rewardRiskTp2 || '1:3.0'}])`
       )
       .join('\n');
 
-    const prompt = `Berikut hasil screening harian MaX V7.30 dari Radar Saham BEI (Fokus G ACC, Breakout, dan Gamma):\n\n${summaryText}\n\nBerikan rangkuman analisis pasar, analisa khusus saham yang mengalami CONFLUENCE (memenuhi multi-scanner sekaligus), urutkan prioritas saham yang paling prospektif, serta berikan rekomendasi trading plan MaX untuk saham peringkat pertama.`;
+    const prompt = `Berikut hasil screening harian MaX V7.30 dari Radar Saham BEI (Fokus G ACC, Breakout, dan Gamma):\n\n${summaryText}\n\nBerikan rangkuman analisis pasar, evaluasi rasio Risk to Reward (R:R) dari Stop Loss dan Target masing-masing emiten, urutkan prioritas saham yang paling prospektif, serta berikan rekomendasi strategi trading plan MaX untuk saham peringkat pertama.`;
     onSendToChat(prompt);
     onClose();
   };
@@ -328,14 +328,38 @@ export default function ScreenerModal({
                         <td className="py-2.5 px-3 text-right text-slate-200">
                           {formatDotNumber(item.buyGrid.buy1)}
                         </td>
-                        <td className="py-2.5 px-3 text-right text-rose-400">
-                          {formatDotNumber(item.buyGrid.stopLoss)}
+                        <td className="py-2.5 px-3 text-right">
+                          <div className="font-semibold text-rose-300">
+                            {formatDotNumber(item.buyGrid.stopLoss)}
+                          </div>
+                          <div className="text-[10px] font-mono text-rose-400 font-medium">
+                            ({item.buyGrid.slPercent !== undefined
+                              ? formatDotNumber(item.buyGrid.slPercent, 1)
+                              : `-${formatDotNumber(((item.buyGrid.buy1 - item.buyGrid.stopLoss) / item.buyGrid.buy1) * 100, 1)}`}%)
+                          </div>
                         </td>
-                        <td className="py-2.5 px-3 text-right text-emerald-400">
-                          {formatDotNumber(item.buyGrid.target1)}
+                        <td className="py-2.5 px-3 text-right">
+                          <div className="font-semibold text-emerald-300">
+                            {formatDotNumber(item.buyGrid.target1)}
+                          </div>
+                          <div className="text-[10px] font-mono text-emerald-400 font-medium">
+                            (+{item.buyGrid.tp1Percent !== undefined
+                              ? formatDotNumber(item.buyGrid.tp1Percent, 1)
+                              : formatDotNumber(((item.buyGrid.target1 - item.buyGrid.buy1) / item.buyGrid.buy1) * 100, 1)}%)
+                          </div>
+                          {item.buyGrid.target2 && (
+                            <div className="text-[9px] font-mono text-slate-400/80 mt-0.5">
+                              TP2: {formatDotNumber(item.buyGrid.target2)} (+{formatDotNumber(item.buyGrid.tp2Percent || 0, 1)}%)
+                            </div>
+                          )}
                         </td>
-                        <td className="py-2.5 px-3 text-center text-slate-300">
-                          {item.buyGrid.rewardRisk}
+                        <td className="py-2.5 px-3 text-center">
+                          <div className="font-bold text-slate-100">{item.buyGrid.rewardRisk}</div>
+                          {item.buyGrid.rewardRiskTp2 && (
+                            <div className="text-[9px] font-mono text-cyan-400/90 mt-0.5 font-medium" title="R/R Target 2 (Full Swing)">
+                              TP2 {item.buyGrid.rewardRiskTp2}
+                            </div>
+                          )}
                         </td>
                         <td className="py-2.5 px-3 text-center">
                           <button

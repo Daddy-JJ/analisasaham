@@ -32,6 +32,10 @@ export interface ScreenerItem {
     target1: number;
     target2: number;
     rewardRisk: string;
+    slPercent?: number;
+    tp1Percent?: number;
+    tp2Percent?: number;
+    rewardRiskTp2?: string;
   };
   confluence?: {
     count: number;
@@ -264,7 +268,12 @@ export async function runKompas100Screener(forceRefresh = false): Promise<Screen
 
         const risk = currentPrice - stopLoss;
         const reward = target1 - currentPrice;
-        const rrRatio = risk > 0 ? (reward / risk).toFixed(1) : '2.0';
+        const reward2 = target2 - currentPrice;
+        const rrRatio = risk > 0 ? (reward / risk).toFixed(1) : '1.5';
+        const rr2Ratio = risk > 0 ? (reward2 / risk).toFixed(1) : '3.0';
+        const slPercent = currentPrice > 0 ? ((stopLoss - currentPrice) / currentPrice) * 100 : -5;
+        const tp1Percent = currentPrice > 0 ? ((target1 - currentPrice) / currentPrice) * 100 : 7;
+        const tp2Percent = currentPrice > 0 ? ((target2 - currentPrice) / currentPrice) * 100 : 14;
 
         const item: ScreenerItem = {
           ticker: stock.ticker,
@@ -289,6 +298,10 @@ export async function runKompas100Screener(forceRefresh = false): Promise<Screen
             target1,
             target2,
             rewardRisk: `1:${rrRatio}`,
+            slPercent,
+            tp1Percent,
+            tp2Percent,
+            rewardRiskTp2: `1:${rr2Ratio}`,
           },
         };
 

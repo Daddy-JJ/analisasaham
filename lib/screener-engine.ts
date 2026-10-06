@@ -13,8 +13,17 @@ export interface ScreenerItem {
   ma20: number;
   ma50: number;
   trend: 'UPTREND' | 'DOWNTREND' | 'SIDEWAYS';
-  signal: 'BETA BREAKOUT' | 'SMART SNIPER' | 'PULLBACK' | 'G ACC' | 'FILTERED';
-  grade: 'A+ ELITE' | 'A HIGH QUALITY' | 'B WATCHLIST' | 'FILTERED';
+  signal:
+    | 'BETA BREAKOUT'
+    | 'SMART SNIPER'
+    | 'V-SHAPE'
+    | 'EARLY SWEEP'
+    | 'SMART GAMMA'
+    | 'PULLBACK'
+    | 'G ACC'
+    | 'FILTERED'
+    | (string & {});
+  grade: 'A+ ELITE' | 'A HIGH QUALITY' | 'B WATCHLIST' | 'FILTERED' | (string & {});
   score: number;
   buyGrid: {
     buy1: number;

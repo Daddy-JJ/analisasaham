@@ -3,6 +3,9 @@
  * Provides automatic, zero-auth access to live EOD Broker Summary, Bandarmology Factors, and Volume Analysis.
  */
 
+import { KOMPAS_100_UNIVERSE } from './kompas100';
+import type { ScreenerItem, ScreenerResult } from './screener-engine';
+
 export interface IdxBrokerRecord {
   code: string;
   name: string;
@@ -238,3 +241,93 @@ export function formatIdxBroksumToText(data: IdxBandarmologyData): string {
 
   return lines.join('\n');
 }
+
+/**
+ * Fetch live official MaX V7.30 Screener from IDX Terminal API.
+ * Covers full 962 IDX stocks with official signals (G ACC, SMART SNIPER, BETA BREAKOUT, etc.)
+ */
+export async function fetchLiveMaxlongScreener(): Promise<ScreenerResult | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 7000);
+
+    const res = await fetch(`${IDX_TERMINAL_BASE}/api/screener?limit=1000`, {
+      signal: controller.signal,
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'AntiGravity-Terminal/2.0',
+      },
+      next: { revalidate: 180 },
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      console.warn(`[Maxlong Screener] Status ${res.status}`);
+      return null;
+    }
+
+    const json = await res.json();
+    if (!json || !Array.isArray(json.records)) {
+      return null;
+    }
+
+    const kompasMap = new Map(KOMPAS_100_UNIVERSE.map((k) => [k.ticker, k]));
+
+    const mappedItems: ScreenerItem[] = json.records.map((r: any) => {
+      const kompas = kompasMap.get(r.ticker);
+      const changePct = typeof r.changePct === 'number' ? r.changePct : 0;
+      const price = typeof r.price === 'number' ? r.price : 0;
+      const change = price * (changePct / 100);
+      const rrRatio = r.rewardRiskBuy1 ? `${Number(r.rewardRiskBuy1).toFixed(1)}:1` : '2.5:1';
+
+      return {
+        ticker: r.ticker,
+        name: kompas?.name || `${r.ticker} Tbk`,
+        sector: kompas?.sector || r.structure || 'IDX Equity',
+        price,
+        change,
+        changePercent: changePct,
+        volume: r.volume || 0,
+        rvol: r.rvol || 1,
+        rsi14: r.rsi || 50,
+        ma20: r.ema21 || 0,
+        ma50: r.ema50 || 0,
+        trend: r.trend === 'UPTREND' ? 'UPTREND' : r.trend === 'DOWNTREND' ? 'DOWNTREND' : 'SIDEWAYS',
+        signal: (r.signal || 'WATCHLIST') as any,
+        grade: (r.score || 0) >= 5200 ? 'A+ ELITE' : (r.score || 0) >= 4500 ? 'A HIGH QUALITY' : 'B WATCHLIST',
+        score: r.score || 0,
+        buyGrid: {
+          buy1: r.buy1 || price,
+          buy2: r.buy2 || Math.round(price * 0.96),
+          stopLoss: r.stopLoss || Math.round(price * 0.90),
+          target1: r.tp1 || Math.round(price * 1.15),
+          target2: r.tp2 || Math.round(price * 1.30),
+          rewardRisk: rrRatio,
+        },
+      };
+    });
+
+    // Filter active signals
+    const activeRecords = json.records.filter((r: any) => r.activeSignal === true);
+    const activeTickers = new Set(activeRecords.map((r: any) => r.ticker));
+
+    const activeSignals = mappedItems
+      .filter((item) => activeTickers.has(item.ticker))
+      .sort((a, b) => b.score - a.score);
+
+    return {
+      scanDate: json.snapshotDate || new Date().toISOString().split('T')[0],
+      totalScreened: json.totalRecords || json.records.length,
+      totalSignals: activeSignals.length,
+      signals: activeSignals,
+      allResults: mappedItems,
+      isCached: false,
+      cachedAt: new Date().toLocaleTimeString('id-ID'),
+    };
+  } catch (err: any) {
+    console.warn('[Maxlong Screener] Error fetching live screener:', err.message);
+    return null;
+  }
+}
+

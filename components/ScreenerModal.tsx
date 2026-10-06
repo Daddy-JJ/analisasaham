@@ -53,9 +53,12 @@ export default function ScreenerModal({
   const signals = data?.signals || [];
   const filteredSignals = signals.filter((item) => {
     if (filterType === 'ALL') return true;
+    if (filterType === 'G_ACC') return item.signal === 'G ACC';
     if (filterType === 'BREAKOUT') return item.signal === 'BETA BREAKOUT';
-    if (filterType === 'SNIPER') return item.signal === 'SMART SNIPER';
-    if (filterType === 'PULLBACK') return item.signal === 'PULLBACK' || item.signal === 'G ACC';
+    if (filterType === 'SNIPER') return item.signal === 'SMART SNIPER' || item.signal === 'V-SHAPE';
+    if (filterType === 'EARLY_SWEEP') return item.signal === 'EARLY SWEEP';
+    if (filterType === 'GAMMA') return item.signal === 'SMART GAMMA';
+    if (filterType === 'PULLBACK') return item.signal === 'PULLBACK';
     return true;
   });
 
@@ -69,7 +72,7 @@ export default function ScreenerModal({
       )
       .join('\n');
 
-    const prompt = `Berikut hasil screening harian MaX V7.30 dari Indeks Kompas 100:\n\n${summaryText}\n\nBerikan rangkuman analisis pasar, urutkan prioritas saham yang paling prospektif, dan berikan strategi trading plan MaX untuk saham peringkat pertama.`;
+    const prompt = `Berikut hasil screening harian MaX V7.30 dari Radar Saham BEI:\n\n${summaryText}\n\nBerikan rangkuman analisis pasar, urutkan prioritas saham yang paling prospektif (khususnya saham dengan sinyal G ACC akumulasi bandar dan Sniper), serta berikan strategi trading plan MaX untuk saham peringkat pertama.`;
     onSendToChat(prompt);
     onClose();
   };
@@ -85,13 +88,13 @@ export default function ScreenerModal({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-bold text-slate-100 text-base">Screener MaX V7.30 — Indeks Kompas 100</h3>
+                <h3 className="font-bold text-slate-100 text-base">Screener MaX V7.30 — Radar Saham BEI</h3>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-800 font-semibold">
-                  DAILY ACTIVE
+                  LIVE RADAR
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Pemindai kuantitatif harian: Trend, Momentum RSI, Relative Volume (RVOL), dan Buy Grid.
+                Pemindai kuantitatif harian: G ACC (Akumulasi Bandar), Breakout, Smart Sniper, Momentum, dan Buy Grid.
               </p>
             </div>
           </div>
@@ -147,7 +150,17 @@ export default function ScreenerModal({
                   : 'text-slate-400 hover:bg-terminal-800 hover:text-slate-200'
               }`}
             >
-              Semua Sinyal ({signals.length})
+              Semua ({signals.length})
+            </button>
+            <button
+              onClick={() => setFilterType('G_ACC')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                filterType === 'G_ACC'
+                  ? 'bg-purple-600 text-white font-semibold shadow-sm'
+                  : 'text-slate-400 hover:bg-terminal-800 hover:text-slate-200'
+              }`}
+            >
+              G ACC ({signals.filter((s) => s.signal === 'G ACC').length})
             </button>
             <button
               onClick={() => setFilterType('BREAKOUT')}
@@ -157,7 +170,7 @@ export default function ScreenerModal({
                   : 'text-slate-400 hover:bg-terminal-800 hover:text-slate-200'
               }`}
             >
-              Beta Breakout ({signals.filter((s) => s.signal === 'BETA BREAKOUT').length})
+              Breakout ({signals.filter((s) => s.signal === 'BETA BREAKOUT').length})
             </button>
             <button
               onClick={() => setFilterType('SNIPER')}
@@ -167,17 +180,27 @@ export default function ScreenerModal({
                   : 'text-slate-400 hover:bg-terminal-800 hover:text-slate-200'
               }`}
             >
-              Smart Sniper / V-Shape ({signals.filter((s) => s.signal === 'SMART SNIPER').length})
+              Sniper / V-Shape ({signals.filter((s) => s.signal === 'SMART SNIPER' || s.signal === 'V-SHAPE').length})
             </button>
             <button
-              onClick={() => setFilterType('PULLBACK')}
+              onClick={() => setFilterType('EARLY_SWEEP')}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                filterType === 'PULLBACK'
+                filterType === 'EARLY_SWEEP'
                   ? 'bg-amber-600 text-white font-semibold shadow-sm'
                   : 'text-slate-400 hover:bg-terminal-800 hover:text-slate-200'
               }`}
             >
-              Pullback & Momentum ({signals.filter((s) => s.signal === 'PULLBACK' || s.signal === 'G ACC').length})
+              Early Sweep ({signals.filter((s) => s.signal === 'EARLY SWEEP').length})
+            </button>
+            <button
+              onClick={() => setFilterType('GAMMA')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                filterType === 'GAMMA'
+                  ? 'bg-pink-600 text-white font-semibold shadow-sm'
+                  : 'text-slate-400 hover:bg-terminal-800 hover:text-slate-200'
+              }`}
+            >
+              Gamma ({signals.filter((s) => s.signal === 'SMART GAMMA').length})
             </button>
           </div>
 
@@ -238,8 +261,12 @@ export default function ScreenerModal({
                   {filteredSignals.map((item) => {
                     const isPos = item.change >= 0;
                     let badgeColor = 'bg-cyan-950 text-cyan-300 border-cyan-800';
-                    if (item.signal === 'BETA BREAKOUT') badgeColor = 'bg-emerald-950 text-emerald-300 border-emerald-800';
+                    if (item.signal === 'G ACC') badgeColor = 'bg-purple-950 text-purple-300 border-purple-700 shadow-sm shadow-purple-950';
+                    else if (item.signal === 'BETA BREAKOUT') badgeColor = 'bg-emerald-950 text-emerald-300 border-emerald-800';
                     else if (item.signal === 'SMART SNIPER') badgeColor = 'bg-blue-950 text-blue-300 border-blue-800';
+                    else if (item.signal === 'V-SHAPE') badgeColor = 'bg-indigo-950 text-indigo-300 border-indigo-800';
+                    else if (item.signal === 'EARLY SWEEP') badgeColor = 'bg-amber-950 text-amber-300 border-amber-800';
+                    else if (item.signal === 'SMART GAMMA') badgeColor = 'bg-pink-950 text-pink-300 border-pink-800';
                     else if (item.signal === 'PULLBACK') badgeColor = 'bg-amber-950 text-amber-300 border-amber-800';
 
                     return (
@@ -306,7 +333,7 @@ export default function ScreenerModal({
         {/* Modal Footer */}
         <div className="p-3 bg-terminal-950/80 border-t border-terminal-800 flex items-center justify-between text-xs text-slate-400">
           <div className="text-[11px]">
-            Indeks Kompas 100 disaring otomatis berdasarkan volume, momentum RSI, dan struktur moving averages.
+            Disaring otomatis berdasarkan G ACC (Akumulasi Bandar), volume surge, momentum RSI, dan strategi grid MaX V7.30.
           </div>
           <button
             onClick={onClose}

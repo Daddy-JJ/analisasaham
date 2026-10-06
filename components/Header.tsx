@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, TrendingUp, Layers, Compass, ShieldAlert, Cpu, FileSpreadsheet, Key } from 'lucide-react';
+import { Search, TrendingUp, Layers, Compass, ShieldAlert, Cpu, FileSpreadsheet } from 'lucide-react';
 
 interface HeaderProps {
   currentTicker: string;
@@ -94,23 +94,6 @@ export default function Header({
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
             )}
           </button>
-
-          {/* Maxlong OAuth Token Connection Button */}
-          {onOpenMaxlongModal && (
-            <button
-              onClick={onOpenMaxlongModal}
-              className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                maxlongConnected
-                  ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300 shadow-sm shadow-emerald-900/30'
-                  : 'bg-terminal-900 border-terminal-700 hover:border-terminal-600 text-slate-300'
-              }`}
-              title="Koneksi Maxlong EOD & Auto-Refresh Token"
-            >
-              <Key className={`w-3.5 h-3.5 ${maxlongConnected ? 'text-emerald-400' : 'text-slate-400'}`} />
-              <span className="hidden md:inline">Maxlong</span>
-              <span className={`w-2 h-2 rounded-full ${maxlongConnected ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
-            </button>
-          )}
         </div>
 
         {/* Quick Tickers */}

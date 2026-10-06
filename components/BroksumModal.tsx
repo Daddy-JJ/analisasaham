@@ -46,70 +46,6 @@ interface BroksumModalProps {
   currentTicker: string;
 }
 
-const SAMPLE_STANDARD = `[Tanggal: Hari Ini / 1 Minggu Terakhir]
-Top Net Buyer:
-1. AK: Net Buy 45.200 lot @ Avg 6.225 (Value: Rp 28,1 Miliar)
-2. CC: Net Buy 32.100 lot @ Avg 6.200 (Value: Rp 19,9 Miliar)
-3. NI: Net Buy 18.500 lot @ Avg 6.210 (Value: Rp 11,5 Miliar)
-
-Top Net Seller:
-1. YP: Net Sell -52.000 lot @ Avg 6.230 (Value: Rp -32,4 Miliar)
-2. PD: Net Sell -25.000 lot @ Avg 6.215 (Value: Rp -15,5 Miliar)
-3. XC: Net Sell -12.400 lot @ Avg 6.240 (Value: Rp -7,7 Miliar)
-
-Foreign Flow: Net Buy Rp +35,2 Miliar
-Total Traded Value: Rp 145 Miliar`;
-
-const SAMPLE_STOCKBIT_TABLE = `BUYER\tB.Lot\tB.Val\tB.Avg\tSELLER\tS.Lot\tS.Val\tS.Avg
-LG\t236.8K\t77.3B\t3,257\tAK\t280.2K\t92.5B\t3,260
-AZ\t175K\t57.7B\t3,280\tBK\t196.4K\t63.9B\t3,242
-CC\t116.1K\t37.3B\t3,255\tSS\t132K\t42.4B\t3,214
-OD\t61.9K\t20.3B\t3,264\tBB\t129.2K\t41.7B\t3,230
-GR\t60.2K\t19.9B\t3,268\tSQ\t40.6K\t13.4B\t3,269
-Total Traded Value: 307.8B`;
-
-const SAMPLE_DISTRIBUTION = `Top Buyer:
-1. YP: Net Buy 55.000 lot @ 2100 (Value: 11.5 Miliar)
-2. PD: Net Buy 40.000 lot @ 2090 (Value: 8.3 Miliar)
-3. XC: Net Buy 30.000 lot @ 2110 (Value: 6.3 Miliar)
-
-Top Seller:
-1. AK: Net Sell 90.000 lot @ 2100 (Value: 18.9 Miliar)
-2. BK: Net Sell 70.000 lot @ 2105 (Value: 14.7 Miliar)
-3. CS: Net Sell 50.000 lot @ 2095 (Value: 10.5 Miliar)
-
-Foreign Flow: Net Sell -25.2 Miliar`;
-
-const SAMPLE_ORDERBOOK_DSSA = `[ORDERBOOK]
-DSSA 1,055 -35 (-3.21%)
-Open: 1,095 | High: 1,125 | Low: 1,050 | Prev: 1,090
-Lot: 3.05M | Val: 332.53B | Avg: 1,089 | Freq: 28,047
-F Buy: 65.6 B | F Sell: 92.5 B
-Total Bid: 571,744 (Freq 3,428)
-Total Offer: 1,759,762 (Freq 9,146)
-3,428 571,744 1,759,762 9,146`;
-
-const SAMPLE_COMBINED_DSSA = `[ORDERBOOK]
-DSSA 1,055 -35 (-3.21%)
-Open: 1,095 | High: 1,125 | Low: 1,050 | Prev: 1,090
-Lot: 3.05M | Val: 332.53B | Avg: 1,089 | Freq: 28,047
-F Buy: 65.6 B | F Sell: 92.5 B
-Total Bid: 571,744 (Freq 3,428)
-Total Offer: 1,759,762 (Freq 9,146)
-
-[BROKER SUMMARY]
-Tanggal: 25 Sep 26
-Top 1: -8.1B (Small Dist)
-Top 3: -9.7B (Normal Dist)
-Top 5: -14.5B (Big Dist)
-BUYER B.Lot B.Val B.Avg SELLER S.Lot S.Val S.Avg
-LG 86.2K 9.7B 1095 TP 160.5K 17.1B 1069
-AZ 87.1K 9.5B 1085 BK 95.9K 10.3B 1074
-RF 80K 8.7B 1094 AI 85.8K 9.7B 1115
-CC 50.3K 5.4B 1094 YJ 69.9K 7.4B 1059
-PD 35.5K 3.9B 1089 AK 59.7K 7.1B 1101
-YP 34.8K 3.8B 1090 GR 49.2K 5.3B 1078`;
-
 // Helper to intelligently update/replace either the [ORDERBOOK] or [BROKER SUMMARY] block
 function updateTextSection(
   currentFullText: string,
@@ -884,43 +820,17 @@ export default function BroksumModal({
                 <BookOpen className="w-3 h-3" />
                 <span>{showBrokerRef ? 'Tutup Klasifikasi' : 'Referensi Broker IDX'}</span>
               </button>
-              <button
-                type="button"
-                onClick={() => setInputText(SAMPLE_COMBINED_DSSA)}
-                className="px-2 py-1 text-[11px] rounded bg-terminal-800 hover:bg-terminal-700 text-purple-300 border border-purple-800/60 transition-colors"
-                title="Contoh kombinasi Broksum dan Orderbook DSSA"
-              >
-                Broksum + OB (DSSA)
-              </button>
-              <button
-                type="button"
-                onClick={() => setInputText(SAMPLE_ORDERBOOK_DSSA)}
-                className="px-2 py-1 text-[11px] rounded bg-terminal-800 hover:bg-terminal-700 text-blue-300 border border-blue-800/60 transition-colors"
-                title="Contoh Orderbook DSSA"
-              >
-                Orderbook (DSSA)
-              </button>
-              <button
-                type="button"
-                onClick={() => setInputText(SAMPLE_STOCKBIT_TABLE)}
-                className="px-2 py-1 text-[11px] rounded bg-terminal-800 hover:bg-terminal-700 text-cyan-300 border border-terminal-700 transition-colors"
-              >
-                Tabel Stockbit
-              </button>
-              <button
-                type="button"
-                onClick={() => setInputText(SAMPLE_STANDARD)}
-                className="px-2 py-1 text-[11px] rounded bg-terminal-800 hover:bg-terminal-700 text-slate-300 border border-terminal-700 transition-colors"
-              >
-                Teks Standar
-              </button>
-              <button
-                type="button"
-                onClick={() => setInputText(SAMPLE_DISTRIBUTION)}
-                className="px-2 py-1 text-[11px] rounded bg-terminal-800 hover:bg-terminal-700 text-rose-300 border border-terminal-700 transition-colors"
-              >
-                Contoh Distribusi
-              </button>
+              {inputText.trim().length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setInputText('')}
+                  className="px-2 py-1 text-[11px] rounded bg-terminal-800 hover:bg-rose-950/60 text-slate-400 hover:text-rose-300 border border-terminal-700 hover:border-rose-800/60 transition-colors flex items-center gap-1"
+                  title="Kosongkan teks broker summary & orderbook"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Kosongkan</span>
+                </button>
+              )}
             </div>
           </div>
 

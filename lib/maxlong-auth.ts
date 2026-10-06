@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import crypto from 'crypto';
 
 export interface MaxlongClientCredentials {
@@ -30,18 +31,63 @@ export interface MaxlongAuthStatus {
   hasRefreshToken?: boolean;
 }
 
-const DATA_DIR = path.join(process.cwd(), '.data');
-const CLIENT_FILE = path.join(DATA_DIR, 'maxlong-client.json');
-const TOKENS_FILE = path.join(DATA_DIR, 'maxlong-tokens.json');
+// In-memory cache for fast access & serverless container warm executions
+const globalStore = globalThis as unknown as {
+  __maxlongTokens?: MaxlongTokens;
+  __maxlongClient?: MaxlongClientCredentials;
+};
 
 const MAXLONG_BASE_URL = process.env.MAXLONG_API_BASE_URL || 'https://eod.maxlong.my.id';
 const RESOURCE_INDICATOR = 'https://eod.maxlong.my.id/mcp';
-const DEFAULT_REDIRECT_URI = 'http://localhost:3010/api/auth/maxlong/callback';
 
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+export function getDefaultRedirectUri(): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/api/auth/maxlong/callback`;
   }
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}/api/auth/maxlong/callback`;
+  }
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}/api/auth/maxlong/callback`;
+  }
+  return 'http://localhost:3010/api/auth/maxlong/callback';
+}
+
+function getDataDir(): string {
+  // In Vercel serverless / AWS lambda, process.cwd() is read-only.
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return path.join(os.tmpdir(), '.data');
+  }
+  return path.join(process.cwd(), '.data');
+}
+
+function ensureDataDir(): string {
+  const dir = getDataDir();
+  try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    return dir;
+  } catch {
+    // If process.cwd() or dir failed, fallback to os.tmpdir
+    const tmpDir = path.join(os.tmpdir(), '.data');
+    try {
+      if (!fs.existsSync(tmpDir)) {
+        fs.mkdirSync(tmpDir, { recursive: true });
+      }
+    } catch {
+      // Ignore fallback error
+    }
+    return tmpDir;
+  }
+}
+
+function getClientFile(): string {
+  return path.join(ensureDataDir(), 'maxlong-client.json');
+}
+
+function getTokensFile(): string {
+  return path.join(ensureDataDir(), 'maxlong-tokens.json');
 }
 
 /**
@@ -67,14 +113,25 @@ export function generatePkcePair() {
 /**
  * Retrieve cached Dynamic Client Registration credentials or register automatically
  */
-export async function getClientCredentials(redirectUri: string = DEFAULT_REDIRECT_URI): Promise<MaxlongClientCredentials> {
-  ensureDataDir();
+export async function getClientCredentials(redirectUri?: string): Promise<MaxlongClientCredentials> {
+  const targetRedirectUri = redirectUri || getDefaultRedirectUri();
 
-  // 1. Check if stored locally
-  if (fs.existsSync(CLIENT_FILE)) {
+  // 1. Check in-memory store
+  if (
+    globalStore.__maxlongClient?.client_id &&
+    globalStore.__maxlongClient?.client_secret &&
+    globalStore.__maxlongClient?.redirect_uris?.includes(targetRedirectUri)
+  ) {
+    return globalStore.__maxlongClient;
+  }
+
+  // 2. Check stored locally on disk
+  const clientFile = getClientFile();
+  if (fs.existsSync(clientFile)) {
     try {
-      const stored = JSON.parse(fs.readFileSync(CLIENT_FILE, 'utf-8')) as MaxlongClientCredentials;
-      if (stored.client_id && stored.client_secret && stored.redirect_uris?.includes(redirectUri)) {
+      const stored = JSON.parse(fs.readFileSync(clientFile, 'utf-8')) as MaxlongClientCredentials;
+      if (stored.client_id && stored.client_secret && stored.redirect_uris?.includes(targetRedirectUri)) {
+        globalStore.__maxlongClient = stored;
         return stored;
       }
     } catch (e) {
@@ -82,14 +139,17 @@ export async function getClientCredentials(redirectUri: string = DEFAULT_REDIREC
     }
   }
 
-  // 2. Register dynamically with Maxlong OAuth 2.1 server (RFC 7591)
+  // 3. Register dynamically with Maxlong OAuth 2.1 server (RFC 7591)
   const regUrl = `${MAXLONG_BASE_URL}/register`;
+  const defaultUri = getDefaultRedirectUri();
+  const redirectUris = Array.from(new Set([targetRedirectUri, defaultUri, 'http://localhost:3010/api/auth/maxlong/callback']));
+
   const res = await fetch(regUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       client_name: 'Gemini IDX Pro Next.js',
-      redirect_uris: [redirectUri, DEFAULT_REDIRECT_URI],
+      redirect_uris: redirectUris,
     }),
   });
 
@@ -99,22 +159,28 @@ export async function getClientCredentials(redirectUri: string = DEFAULT_REDIREC
   }
 
   const credentials = (await res.json()) as MaxlongClientCredentials;
-  fs.writeFileSync(CLIENT_FILE, JSON.stringify(credentials, null, 2), 'utf-8');
+  globalStore.__maxlongClient = credentials;
+  try {
+    fs.writeFileSync(clientFile, JSON.stringify(credentials, null, 2), 'utf-8');
+  } catch {
+    // ignore if disk write fails on serverless
+  }
   return credentials;
 }
 
 /**
  * Build authorization URL for user login / consent
  */
-export async function createAuthorizationUrl(redirectUri: string = DEFAULT_REDIRECT_URI) {
-  const client = await getClientCredentials(redirectUri);
+export async function createAuthorizationUrl(redirectUri?: string) {
+  const targetRedirectUri = redirectUri || getDefaultRedirectUri();
+  const client = await getClientCredentials(targetRedirectUri);
   const { codeVerifier, codeChallenge } = generatePkcePair();
   const state = base64UrlEncode(crypto.randomBytes(16));
 
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: client.client_id,
-    redirect_uri: redirectUri,
+    redirect_uri: targetRedirectUri,
     scope: 'mcp:tools',
     resource: RESOURCE_INDICATOR,
     code_challenge: codeChallenge,
@@ -132,15 +198,16 @@ export async function createAuthorizationUrl(redirectUri: string = DEFAULT_REDIR
 export async function exchangeAuthorizationCode(
   code: string,
   codeVerifier: string,
-  redirectUri: string = DEFAULT_REDIRECT_URI
+  redirectUri?: string
 ): Promise<MaxlongTokens> {
-  const client = await getClientCredentials(redirectUri);
+  const targetRedirectUri = redirectUri || getDefaultRedirectUri();
+  const client = await getClientCredentials(targetRedirectUri);
   const tokenUrl = `${MAXLONG_BASE_URL}/token`;
 
   const body = new URLSearchParams({
     grant_type: 'authorization_code',
     code,
-    redirect_uri: redirectUri,
+    redirect_uri: targetRedirectUri,
     client_id: client.client_id,
     client_secret: client.client_secret,
     code_verifier: codeVerifier,
@@ -222,22 +289,35 @@ export async function refreshAccessToken(refreshToken: string): Promise<MaxlongT
 }
 
 /**
- * Save tokens to persistent JSON file
+ * Save tokens to persistent JSON file and in-memory cache
  */
 export function saveTokens(tokens: MaxlongTokens) {
-  ensureDataDir();
-  fs.writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2), 'utf-8');
+  globalStore.__maxlongTokens = tokens;
+  try {
+    const file = getTokensFile();
+    fs.writeFileSync(file, JSON.stringify(tokens, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('Gagal menyimpan token ke disk (in-memory cache aktif):', err);
+  }
 }
 
 /**
- * Load tokens from persistent JSON file
+ * Load tokens from in-memory cache or persistent JSON file
  */
 export function loadTokens(): MaxlongTokens | null {
-  if (!fs.existsSync(TOKENS_FILE)) return null;
+  if (globalStore.__maxlongTokens?.access_token) {
+    return globalStore.__maxlongTokens;
+  }
   try {
-    const data = JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf-8')) as MaxlongTokens;
-    if (data.access_token) return data;
-  } catch (e) {
+    const file = getTokensFile();
+    if (fs.existsSync(file)) {
+      const data = JSON.parse(fs.readFileSync(file, 'utf-8')) as MaxlongTokens;
+      if (data.access_token) {
+        globalStore.__maxlongTokens = data;
+        return data;
+      }
+    }
+  } catch {
     // ignore
   }
   return null;
@@ -247,12 +327,14 @@ export function loadTokens(): MaxlongTokens | null {
  * Clear stored tokens
  */
 export function clearTokens() {
-  if (fs.existsSync(TOKENS_FILE)) {
-    try {
-      fs.unlinkSync(TOKENS_FILE);
-    } catch (e) {
-      // ignore
+  globalStore.__maxlongTokens = undefined;
+  try {
+    const file = getTokensFile();
+    if (fs.existsSync(file)) {
+      fs.unlinkSync(file);
     }
+  } catch {
+    // ignore
   }
 }
 
@@ -329,10 +411,11 @@ export function getMaxlongAuthStatus(): MaxlongAuthStatus {
  */
 export async function directAuthorizeWithAccessKey(
   accessKey: string,
-  redirectUri: string = DEFAULT_REDIRECT_URI
+  redirectUri?: string
 ): Promise<{ ok: boolean; tokens?: MaxlongTokens; message?: string }> {
   try {
-    const client = await getClientCredentials(redirectUri);
+    const targetRedirectUri = redirectUri || getDefaultRedirectUri();
+    const client = await getClientCredentials(targetRedirectUri);
     const { codeVerifier, codeChallenge } = generatePkcePair();
     const state = base64UrlEncode(crypto.randomBytes(16));
 
@@ -340,7 +423,7 @@ export async function directAuthorizeWithAccessKey(
     const authParams = new URLSearchParams({
       response_type: 'code',
       client_id: client.client_id,
-      redirect_uri: redirectUri,
+      redirect_uri: targetRedirectUri,
       scope: 'mcp:tools',
       resource: RESOURCE_INDICATOR,
       code_challenge: codeChallenge,
@@ -396,7 +479,7 @@ export async function directAuthorizeWithAccessKey(
     }
 
     // 3. Exchange code for access & refresh tokens
-    const tokens = await exchangeAuthorizationCode(code, codeVerifier, redirectUri);
+    const tokens = await exchangeAuthorizationCode(code, codeVerifier, targetRedirectUri);
     return { ok: true, tokens };
   } catch (err: any) {
     return { ok: false, message: err.message || 'Terjadi kesalahan saat otorisasi langsung.' };

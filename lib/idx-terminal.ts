@@ -274,12 +274,47 @@ export async function fetchLiveMaxlongScreener(): Promise<ScreenerResult | null>
 
     const kompasMap = new Map(KOMPAS_100_UNIVERSE.map((k) => [k.ticker, k]));
 
+    // 1. Map all items with multi-scanner check and confluence calculation
     const mappedItems: ScreenerItem[] = json.records.map((r: any) => {
       const kompas = kompasMap.get(r.ticker);
       const changePct = typeof r.changePct === 'number' ? r.changePct : 0;
       const price = typeof r.price === 'number' ? r.price : 0;
       const change = price * (changePct / 100);
       const rrRatio = r.rewardRiskBuy1 ? `${Number(r.rewardRiskBuy1).toFixed(1)}:1` : '2.5:1';
+
+      // Detect which of the 3 target scanners qualify:
+      const matchedScanners: string[] = [];
+      const sigUpper = (r.signal || '').toUpperCase();
+      const activeSigUpper = (r.activeSignals || '').toUpperCase();
+      const alphaStatusUpper = (r.alphaStatus || '').toUpperCase();
+
+      // Scanner 1: G ACC (Gamma Accumulation)
+      const isGAcc = sigUpper === 'G ACC' || activeSigUpper.includes('G ACC');
+      if (isGAcc) {
+        matchedScanners.push('G ACC');
+      }
+
+      // Scanner 2: Breakout (Beta Breakout)
+      const isBreakout =
+        sigUpper === 'BETA BREAKOUT' ||
+        activeSigUpper.includes('BREAKOUT') ||
+        r.risenRecentUpBreak === 'TRUE';
+      if (isBreakout) {
+        matchedScanners.push('BREAKOUT');
+      }
+
+      // Scanner 3: Gamma (Smart Gamma)
+      const isGamma =
+        sigUpper === 'SMART GAMMA' ||
+        activeSigUpper.includes('GAMMA') ||
+        alphaStatusUpper.includes('GAMMA');
+      if (isGamma) {
+        matchedScanners.push('GAMMA');
+      }
+
+      const count = matchedScanners.length;
+      const isConfluence = count >= 2;
+      const confluenceLabel = count === 3 ? '3x CONFLUENCE' : count === 2 ? '2x CONFLUENCE' : 'SINGLE';
 
       return {
         ticker: r.ticker,
@@ -305,22 +340,45 @@ export async function fetchLiveMaxlongScreener(): Promise<ScreenerResult | null>
           target2: r.tp2 || Math.round(price * 1.30),
           rewardRisk: rrRatio,
         },
+        confluence: {
+          count,
+          isConfluence,
+          scanners: matchedScanners,
+          label: confluenceLabel,
+        },
       };
     });
 
-    // Filter active signals
-    const activeRecords = json.records.filter((r: any) => r.activeSignal === true);
-    const activeTickers = new Set(activeRecords.map((r: any) => r.ticker));
+    // 2. Filter ONLY stocks that belong to the 3 target scanners (G ACC, BETA BREAKOUT, SMART GAMMA)
+    // and exclude stocks that only belong to Sniper, V-Shape, or Early Sweep.
+    const targetSignalSet = new Set(['G ACC', 'BETA BREAKOUT', 'SMART GAMMA']);
 
-    const activeSignals = mappedItems
-      .filter((item) => activeTickers.has(item.ticker))
-      .sort((a, b) => b.score - a.score);
+    const targetActiveItems = mappedItems.filter((item) => {
+      const orig = json.records.find((rec: any) => rec.ticker === item.ticker);
+      if (!orig || orig.activeSignal !== true) return false;
+
+      const primary = (orig.signal || '').toUpperCase();
+      const activeSig = (orig.activeSignals || '').toUpperCase();
+      return (
+        targetSignalSet.has(primary) ||
+        activeSig.includes('G ACC') ||
+        activeSig.includes('BETA BREAKOUT') ||
+        activeSig.includes('SMART GAMMA')
+      );
+    });
+
+    // Sort: Confluence count descending (3x -> 2x -> 1x), then score descending
+    const sortedActiveSignals = targetActiveItems.sort((a, b) => {
+      const confDiff = (b.confluence?.count || 0) - (a.confluence?.count || 0);
+      if (confDiff !== 0) return confDiff;
+      return b.score - a.score;
+    });
 
     return {
       scanDate: json.snapshotDate || new Date().toISOString().split('T')[0],
       totalScreened: json.totalRecords || json.records.length,
-      totalSignals: activeSignals.length,
-      signals: activeSignals,
+      totalSignals: sortedActiveSignals.length,
+      signals: sortedActiveSignals,
       allResults: mappedItems,
       isCached: false,
       cachedAt: new Date().toLocaleTimeString('id-ID'),

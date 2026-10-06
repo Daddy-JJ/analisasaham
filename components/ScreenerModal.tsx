@@ -53,12 +53,10 @@ export default function ScreenerModal({
   const signals = data?.signals || [];
   const filteredSignals = signals.filter((item) => {
     if (filterType === 'ALL') return true;
+    if (filterType === 'CONFLUENCE') return Boolean(item.confluence?.isConfluence);
     if (filterType === 'G_ACC') return item.signal === 'G ACC';
     if (filterType === 'BREAKOUT') return item.signal === 'BETA BREAKOUT';
-    if (filterType === 'SNIPER') return item.signal === 'SMART SNIPER' || item.signal === 'V-SHAPE';
-    if (filterType === 'EARLY_SWEEP') return item.signal === 'EARLY SWEEP';
     if (filterType === 'GAMMA') return item.signal === 'SMART GAMMA';
-    if (filterType === 'PULLBACK') return item.signal === 'PULLBACK';
     return true;
   });
 
@@ -68,11 +66,11 @@ export default function ScreenerModal({
     const summaryText = top5
       .map(
         (s, idx) =>
-          `${idx + 1}. **${s.ticker}** (Rp ${formatDotNumber(s.price)}, ${s.changePercent >= 0 ? '+' : ''}${formatDotNumber(s.changePercent, 2)}%) - Sinyal: ${s.signal} (RVOL: ${formatDotNumber(s.rvol, 2)}x, RSI: ${formatDotNumber(s.rsi14, 1)}, Buy 1: ${formatDotNumber(s.buyGrid.buy1)}, SL: ${formatDotNumber(s.buyGrid.stopLoss)}, TP: ${formatDotNumber(s.buyGrid.target1)})`
+          `${idx + 1}. **${s.ticker}** (Rp ${formatDotNumber(s.price)}, ${s.changePercent >= 0 ? '+' : ''}${formatDotNumber(s.changePercent, 2)}%) - Sinyal: ${s.signal}${s.confluence?.isConfluence ? ` [🔥 ${s.confluence.label}: ${s.confluence.scanners.join(' + ')}]` : ''} (RVOL: ${formatDotNumber(s.rvol, 2)}x, RSI: ${formatDotNumber(s.rsi14, 1)}, Buy 1: ${formatDotNumber(s.buyGrid.buy1)}, SL: ${formatDotNumber(s.buyGrid.stopLoss)}, TP: ${formatDotNumber(s.buyGrid.target1)})`
       )
       .join('\n');
 
-    const prompt = `Berikut hasil screening harian MaX V7.30 dari Radar Saham BEI:\n\n${summaryText}\n\nBerikan rangkuman analisis pasar, urutkan prioritas saham yang paling prospektif (khususnya saham dengan sinyal G ACC akumulasi bandar dan Sniper), serta berikan strategi trading plan MaX untuk saham peringkat pertama.`;
+    const prompt = `Berikut hasil screening harian MaX V7.30 dari Radar Saham BEI (Fokus G ACC, Breakout, dan Gamma):\n\n${summaryText}\n\nBerikan rangkuman analisis pasar, analisa khusus saham yang mengalami CONFLUENCE (memenuhi multi-scanner sekaligus), urutkan prioritas saham yang paling prospektif, serta berikan rekomendasi trading plan MaX untuk saham peringkat pertama.`;
     onSendToChat(prompt);
     onClose();
   };
@@ -94,7 +92,7 @@ export default function ScreenerModal({
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Pemindai kuantitatif harian: G ACC (Akumulasi Bandar), Breakout, Smart Sniper, Momentum, dan Buy Grid.
+                Pemindai kuantitatif harian: G ACC (Akumulasi Bandar), Breakout, Smart Gamma, dan Deteksi Multi-Scanner Confluence.
               </p>
             </div>
           </div>
@@ -153,6 +151,19 @@ export default function ScreenerModal({
               Semua ({signals.length})
             </button>
             <button
+              onClick={() => setFilterType('CONFLUENCE')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                filterType === 'CONFLUENCE'
+                  ? 'bg-amber-600 text-white font-semibold shadow-sm'
+                  : 'text-amber-400 hover:bg-amber-950/40 border border-amber-800/40'
+              }`}
+            >
+              <span>🔥 Confluence</span>
+              <span className="px-1.5 py-0.2 bg-amber-950/80 rounded text-[10px] text-amber-200 font-mono">
+                {signals.filter((s) => s.confluence?.isConfluence).length}
+              </span>
+            </button>
+            <button
               onClick={() => setFilterType('G_ACC')}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                 filterType === 'G_ACC'
@@ -171,26 +182,6 @@ export default function ScreenerModal({
               }`}
             >
               Breakout ({signals.filter((s) => s.signal === 'BETA BREAKOUT').length})
-            </button>
-            <button
-              onClick={() => setFilterType('SNIPER')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                filterType === 'SNIPER'
-                  ? 'bg-blue-600 text-white font-semibold shadow-sm'
-                  : 'text-slate-400 hover:bg-terminal-800 hover:text-slate-200'
-              }`}
-            >
-              Sniper / V-Shape ({signals.filter((s) => s.signal === 'SMART SNIPER' || s.signal === 'V-SHAPE').length})
-            </button>
-            <button
-              onClick={() => setFilterType('EARLY_SWEEP')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                filterType === 'EARLY_SWEEP'
-                  ? 'bg-amber-600 text-white font-semibold shadow-sm'
-                  : 'text-slate-400 hover:bg-terminal-800 hover:text-slate-200'
-              }`}
-            >
-              Early Sweep ({signals.filter((s) => s.signal === 'EARLY SWEEP').length})
             </button>
             <button
               onClick={() => setFilterType('GAMMA')}
@@ -263,16 +254,32 @@ export default function ScreenerModal({
                     let badgeColor = 'bg-cyan-950 text-cyan-300 border-cyan-800';
                     if (item.signal === 'G ACC') badgeColor = 'bg-purple-950 text-purple-300 border-purple-700 shadow-sm shadow-purple-950';
                     else if (item.signal === 'BETA BREAKOUT') badgeColor = 'bg-emerald-950 text-emerald-300 border-emerald-800';
+                    else if (item.signal === 'SMART GAMMA') badgeColor = 'bg-pink-950 text-pink-300 border-pink-800';
                     else if (item.signal === 'SMART SNIPER') badgeColor = 'bg-blue-950 text-blue-300 border-blue-800';
                     else if (item.signal === 'V-SHAPE') badgeColor = 'bg-indigo-950 text-indigo-300 border-indigo-800';
                     else if (item.signal === 'EARLY SWEEP') badgeColor = 'bg-amber-950 text-amber-300 border-amber-800';
-                    else if (item.signal === 'SMART GAMMA') badgeColor = 'bg-pink-950 text-pink-300 border-pink-800';
                     else if (item.signal === 'PULLBACK') badgeColor = 'bg-amber-950 text-amber-300 border-amber-800';
 
+                    const isConf = Boolean(item.confluence?.isConfluence);
+
                     return (
-                      <tr key={item.ticker} className="hover:bg-terminal-850/60 transition-colors">
+                      <tr
+                        key={item.ticker}
+                        className={`transition-colors ${
+                          isConf
+                            ? 'bg-amber-950/20 hover:bg-amber-900/30 border-l-2 border-amber-500/80'
+                            : 'hover:bg-terminal-850/60'
+                        }`}
+                      >
                         <td className="py-2.5 px-3">
-                          <div className="font-bold text-slate-100 text-sm">{item.ticker}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-100 text-sm">{item.ticker}</span>
+                            {isConf && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 text-[9px] font-bold rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 text-amber-300 border border-amber-500/40 shadow-xs">
+                                🔥 {item.confluence?.count}x
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[10px] text-slate-400 line-clamp-1">{item.name}</div>
                         </td>
                         <td className="py-2.5 px-3 text-right">
@@ -283,10 +290,22 @@ export default function ScreenerModal({
                           </div>
                         </td>
                         <td className="py-2.5 px-3 text-center">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badgeColor}`}>
-                            {item.signal}
-                          </span>
-                          <div className="text-[9px] text-slate-500 mt-0.5">{item.grade}</div>
+                          <div className="flex flex-col items-center gap-1">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${badgeColor}`}>
+                              {item.signal}
+                            </span>
+                            {isConf && (
+                              <span
+                                className="text-[9px] font-mono font-medium text-amber-300 bg-amber-950/70 px-1.5 py-0.5 rounded border border-amber-700/60 whitespace-nowrap"
+                                title={`Confluence Scanners: ${item.confluence?.scanners.join(' + ')}`}
+                              >
+                                {item.confluence?.scanners.join(' • ')}
+                              </span>
+                            )}
+                            {!isConf && (
+                              <div className="text-[9px] text-slate-500">{item.grade}</div>
+                            )}
+                          </div>
                         </td>
                         <td className="py-2.5 px-3 text-center">
                           <span className={`font-semibold ${item.rvol >= 1.5 ? 'text-emerald-400 font-bold' : 'text-slate-300'}`}>

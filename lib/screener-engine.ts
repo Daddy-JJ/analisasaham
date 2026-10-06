@@ -33,6 +33,12 @@ export interface ScreenerItem {
     target2: number;
     rewardRisk: string;
   };
+  confluence?: {
+    count: number;
+    isConfluence: boolean;
+    scanners: string[];
+    label: string;
+  };
 }
 
 export interface ScreenerResult {

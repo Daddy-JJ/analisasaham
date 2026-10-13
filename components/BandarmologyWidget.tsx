@@ -23,7 +23,7 @@ interface BandarmologyWidgetProps {
   onAnalyzeWithAi: (prompt: string) => void;
 }
 
-export default function BandarmologyWidget({
+function BandarmologyWidgetComponent({
   currentTicker,
   onOpenBroksumModal,
   onAnalyzeWithAi,
@@ -334,3 +334,5 @@ export default function BandarmologyWidget({
     </div>
   );
 }
+
+export default React.memo(BandarmologyWidgetComponent);

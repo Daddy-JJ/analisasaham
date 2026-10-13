@@ -273,34 +273,46 @@ export async function fetchLiveMaxlongScreener(): Promise<ScreenerResult | null>
     }
 
     const kompasMap = new Map(KOMPAS_100_UNIVERSE.map((k) => [k.ticker, k]));
+    const targetSignalSet = new Set(['G ACC', 'BETA BREAKOUT', 'SMART GAMMA']);
 
-    // 1. Map all items with multi-scanner check and confluence calculation
-    const mappedItems: ScreenerItem[] = json.records.map((r: any) => {
+    // 1. Single-pass O(N) filter & map: process ONLY qualifying active records
+    const targetActiveItems: ScreenerItem[] = [];
+
+    for (const r of json.records) {
+      if (!r || r.activeSignal !== true) continue;
+
+      const primary = (r.signal || '').toUpperCase();
+      const activeSig = (r.activeSignals || '').toUpperCase();
+      const isTargetSignal =
+        targetSignalSet.has(primary) ||
+        activeSig.includes('G ACC') ||
+        activeSig.includes('BETA BREAKOUT') ||
+        activeSig.includes('SMART GAMMA');
+
+      if (!isTargetSignal) continue;
+
       const kompas = kompasMap.get(r.ticker);
       const changePct = typeof r.changePct === 'number' ? r.changePct : 0;
       const price = typeof r.price === 'number' ? r.price : 0;
       const change = price * (changePct / 100);
-      const rrRatio = r.rewardRiskBuy1 ? `${Number(r.rewardRiskBuy1).toFixed(1)}:1` : '2.5:1';
 
       // Detect which of the 3 target scanners qualify strictly based on authentic scanner signals:
       const matchedScanners: string[] = [];
-      const sigUpper = (r.signal || '').toUpperCase();
-      const activeSigUpper = (r.activeSignals || '').toUpperCase();
 
       // Scanner 1: G ACC (Gamma Accumulation)
-      const isGAcc = sigUpper === 'G ACC' || activeSigUpper.includes('G ACC');
+      const isGAcc = primary === 'G ACC' || activeSig.includes('G ACC');
       if (isGAcc) {
         matchedScanners.push('G ACC');
       }
 
       // Scanner 2: Breakout (Beta Breakout)
-      const isBreakout = sigUpper === 'BETA BREAKOUT' || activeSigUpper.includes('BETA BREAKOUT');
+      const isBreakout = primary === 'BETA BREAKOUT' || activeSig.includes('BETA BREAKOUT');
       if (isBreakout) {
         matchedScanners.push('BETA BREAKOUT');
       }
 
       // Scanner 3: Gamma (Smart Gamma)
-      const isGamma = sigUpper === 'SMART GAMMA' || activeSigUpper.includes('SMART GAMMA');
+      const isGamma = primary === 'SMART GAMMA' || activeSig.includes('SMART GAMMA');
       if (isGamma) {
         matchedScanners.push('SMART GAMMA');
       }
@@ -319,14 +331,14 @@ export async function fetchLiveMaxlongScreener(): Promise<ScreenerResult | null>
       const tp1Percent = entry > 0 ? ((tp1 - entry) / entry) * 100 : 15;
       const tp2Percent = entry > 0 ? ((tp2 - entry) / entry) * 100 : 30;
 
-      // Calculate R:R mathematically: Target 1 vs SL (1.5R) and Target 2 vs SL (3.0R)
-      const rr1Val = riskPts > 0 ? (tp1 - entry) / riskPts : 1.5;
-      const rr2Val = riskPts > 0 ? (tp2 - entry) / riskPts : 3.0;
+      // Calculate R:R mathematically with exact risk and reward validation
+      const rr1Val = riskPts > 0 && tp1 > entry ? (tp1 - entry) / riskPts : null;
+      const rr2Val = riskPts > 0 && tp2 > entry ? (tp2 - entry) / riskPts : null;
 
-      const rrTp1 = `1:${rr1Val.toFixed(1)}`;
-      const rrTp2 = `1:${rr2Val.toFixed(1)}`;
+      const rrTp1 = rr1Val !== null ? `1:${rr1Val.toFixed(1)}` : '-';
+      const rrTp2 = rr2Val !== null ? `1:${rr2Val.toFixed(1)}` : '-';
 
-      return {
+      targetActiveItems.push({
         ticker: r.ticker,
         name: kompas?.name || `${r.ticker} Tbk`,
         sector: kompas?.sector || r.structure || 'IDX Equity',
@@ -360,26 +372,8 @@ export async function fetchLiveMaxlongScreener(): Promise<ScreenerResult | null>
           scanners: matchedScanners,
           label: confluenceLabel,
         },
-      };
-    });
-
-    // 2. Filter ONLY stocks that belong to the 3 target scanners (G ACC, BETA BREAKOUT, SMART GAMMA)
-    // and exclude stocks that only belong to Sniper, V-Shape, or Early Sweep.
-    const targetSignalSet = new Set(['G ACC', 'BETA BREAKOUT', 'SMART GAMMA']);
-
-    const targetActiveItems = mappedItems.filter((item) => {
-      const orig = json.records.find((rec: any) => rec.ticker === item.ticker);
-      if (!orig || orig.activeSignal !== true) return false;
-
-      const primary = (orig.signal || '').toUpperCase();
-      const activeSig = (orig.activeSignals || '').toUpperCase();
-      return (
-        targetSignalSet.has(primary) ||
-        activeSig.includes('G ACC') ||
-        activeSig.includes('BETA BREAKOUT') ||
-        activeSig.includes('SMART GAMMA')
-      );
-    });
+      });
+    }
 
     // Sort: Confluence count descending (3x -> 2x -> 1x), then score descending
     const sortedActiveSignals = targetActiveItems.sort((a, b) => {
@@ -393,7 +387,6 @@ export async function fetchLiveMaxlongScreener(): Promise<ScreenerResult | null>
       totalScreened: json.totalRecords || json.records.length,
       totalSignals: sortedActiveSignals.length,
       signals: sortedActiveSignals,
-      allResults: mappedItems,
       isCached: false,
       cachedAt: new Date().toLocaleTimeString('id-ID'),
     };

@@ -50,7 +50,7 @@ export interface ScreenerResult {
   totalScreened: number;
   totalSignals: number;
   signals: ScreenerItem[];
-  allResults: ScreenerItem[];
+  allResults?: ScreenerItem[];
   isCached: boolean;
   cachedAt: string;
 }
@@ -166,8 +166,8 @@ export async function runKompas100Screener(forceRefresh = false): Promise<Screen
   }
 
   const screenedItems: ScreenerItem[] = [];
-  const BATCH_SIZE = 6; // Process 6 stocks at a time to remain polite
-  const BATCH_DELAY = 120; // 120ms delay between batches
+  const BATCH_SIZE = 10; // Process 10 stocks at a time to remain polite
+  const BATCH_DELAY = 80; // 80ms delay between batches
 
   for (let i = 0; i < KOMPAS_100_UNIVERSE.length; i += BATCH_SIZE) {
     const batch = KOMPAS_100_UNIVERSE.slice(i, i + BATCH_SIZE);
@@ -269,8 +269,8 @@ export async function runKompas100Screener(forceRefresh = false): Promise<Screen
         const risk = currentPrice - stopLoss;
         const reward = target1 - currentPrice;
         const reward2 = target2 - currentPrice;
-        const rrRatio = risk > 0 ? (reward / risk).toFixed(1) : '1.5';
-        const rr2Ratio = risk > 0 ? (reward2 / risk).toFixed(1) : '3.0';
+        const rrRatio = risk > 0 && reward > 0 ? (reward / risk).toFixed(1) : '-';
+        const rr2Ratio = risk > 0 && reward2 > 0 ? (reward2 / risk).toFixed(1) : '-';
         const slPercent = currentPrice > 0 ? ((stopLoss - currentPrice) / currentPrice) * 100 : -5;
         const tp1Percent = currentPrice > 0 ? ((target1 - currentPrice) / currentPrice) * 100 : 7;
         const tp2Percent = currentPrice > 0 ? ((target2 - currentPrice) / currentPrice) * 100 : 14;
@@ -334,7 +334,6 @@ export async function runKompas100Screener(forceRefresh = false): Promise<Screen
     totalScreened: screenedItems.length,
     totalSignals: activeSignals.length,
     signals: activeSignals,
-    allResults: screenedItems,
     isCached: false,
     cachedAt: new Date().toLocaleTimeString('id-ID'),
   };

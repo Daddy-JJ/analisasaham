@@ -16,10 +16,17 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await fetchStockData(ticker);
-    return NextResponse.json({
-      ok: true,
-      data,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        data,
+      },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300',
+        },
+      }
+    );
   } catch (error: any) {
     console.error('Market data error:', error);
     return NextResponse.json(

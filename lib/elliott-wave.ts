@@ -278,10 +278,19 @@ export function calculateElliottWaveProjections(
     : `Peringatan: Proyeksi Wave 4 mendekati teritori Wave 1.`;
 
   // Risk / Reward Ratio to Target Wave 3
-  const risk = Math.max(5, currentPrice - invalidationLevel);
-  const reward = Math.max(5, w3TargetPrice - currentPrice);
-  const rr = (reward / risk).toFixed(1).replace('.', ',');
-  const riskRewardRatio = `1 : ${rr}`;
+  let riskRewardRatio = '1 : 1,0';
+  if (currentPrice <= invalidationLevel) {
+    riskRewardRatio = 'INVALID (Breakdown)';
+  } else if (currentPrice >= w3TargetPrice) {
+    riskRewardRatio = 'TARGET TERCAPAI';
+  } else {
+    const risk = currentPrice - invalidationLevel;
+    const reward = w3TargetPrice - currentPrice;
+    if (risk > 0) {
+      const rr = (reward / risk).toFixed(1).replace('.', ',');
+      riskRewardRatio = `1 : ${rr}`;
+    }
+  }
 
   // Series data paths for plotting
   // 1. Historical swing path (strictly unique timestamps)

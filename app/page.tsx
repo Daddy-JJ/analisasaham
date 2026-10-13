@@ -49,7 +49,6 @@ export default function Home() {
     const clean = newTicker.trim().toUpperCase();
     if (clean && clean !== currentTicker) {
       setCurrentTicker(clean);
-      loadMarketData(clean);
     }
   };
 
@@ -105,6 +104,21 @@ export default function Home() {
       const decoder = new TextDecoder();
       let accumulatedContent = '';
 
+      let lastFlush = Date.now();
+      const updateMessageState = (final = false) => {
+        const now = Date.now();
+        if (final || now - lastFlush >= 60) {
+          lastFlush = now;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === assistantMessageId
+                ? { ...msg, content: accumulatedContent }
+                : msg
+            )
+          );
+        }
+      };
+
       let buffer = '';
       while (true) {
         const { done, value } = await reader.read();
@@ -127,22 +141,10 @@ export default function Home() {
                 setStockData((prev) => ({ ...(prev || {}), ...parsed.stockData }));
               } else if (parsed.type === 'text' && parsed.content) {
                 accumulatedContent += parsed.content;
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === assistantMessageId
-                      ? { ...msg, content: accumulatedContent }
-                      : msg
-                  )
-                );
+                updateMessageState(false);
               } else if (parsed.type === 'error') {
                 accumulatedContent += `\n\n> ⚠️ **Error:** ${parsed.message}`;
-                setMessages((prev) =>
-                  prev.map((msg) =>
-                    msg.id === assistantMessageId
-                      ? { ...msg, content: accumulatedContent }
-                      : msg
-                  )
-                );
+                updateMessageState(true);
               }
             } catch (parseErr) {
               console.warn('Error parsing SSE event data:', parseErr);
@@ -150,6 +152,9 @@ export default function Home() {
           }
         }
       }
+
+      // Final flush to ensure 100% of text is committed
+      updateMessageState(true);
     } catch (err: any) {
       console.error('Chat error:', err);
       setMessages((prev) =>

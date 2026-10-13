@@ -12,7 +12,7 @@ interface TradingPlanCardProps {
   onViewWaveChart?: () => void;
 }
 
-export default function TradingPlanCard({
+function TradingPlanCardComponent({
   stockData,
   isLoadingData,
   onAnalyze,
@@ -216,3 +216,5 @@ export default function TradingPlanCard({
     </div>
   );
 }
+
+export default React.memo(TradingPlanCardComponent);

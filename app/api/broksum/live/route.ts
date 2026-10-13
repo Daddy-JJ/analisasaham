@@ -23,12 +23,19 @@ export async function GET(request: NextRequest) {
 
     const broksumText = formatIdxBroksumToText(data);
 
-    return NextResponse.json({
-      ok: true,
-      ticker: data.ticker,
-      data,
-      broksumText,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        ticker: data.ticker,
+        data,
+        broksumText,
+      },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=180, stale-while-revalidate=600',
+        },
+      }
+    );
   } catch (error: any) {
     return NextResponse.json(
       { ok: false, message: error.message || 'Gagal mengambil data live broker summary.' },

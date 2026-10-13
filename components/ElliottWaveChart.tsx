@@ -28,7 +28,7 @@ interface ElliottWaveChartProps {
   height?: string | number;
 }
 
-export default function ElliottWaveChart({
+function ElliottWaveChartComponent({
   stockData,
   currentTicker,
   onSendToChat,
@@ -55,6 +55,7 @@ export default function ElliottWaveChart({
     if (!container || !stockData || !stockData.bars || stockData.bars.length === 0 || !ew) return;
 
     let isDisposed = false;
+    let resizeListener: (() => void) | null = null;
 
     // Dynamically import Lightweight Charts to guarantee 100% safe client-side execution
     import('lightweight-charts').then((lc) => {
@@ -405,13 +406,14 @@ export default function ElliottWaveChart({
       };
 
       window.addEventListener('resize', handleResize);
-      return () => {
-        window.removeEventListener('resize', handleResize);
-      };
+      resizeListener = handleResize;
     });
 
     return () => {
       isDisposed = true;
+      if (resizeListener) {
+        window.removeEventListener('resize', resizeListener);
+      }
       if (chartInstanceRef.current) {
         try {
           chartInstanceRef.current.remove();
@@ -609,3 +611,5 @@ export default function ElliottWaveChart({
     </div>
   );
 }
+
+export default React.memo(ElliottWaveChartComponent);

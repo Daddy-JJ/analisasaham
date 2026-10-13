@@ -12,21 +12,35 @@ export async function GET(request: NextRequest) {
     // 1. Prioritaskan Live MaX V7.30 Screener (mencakup 962 saham BEI dengan algoritma resmi MaX)
     const liveResult = await fetchLiveMaxlongScreener();
     if (liveResult && liveResult.signals.length > 0) {
-      return NextResponse.json({
-        ok: true,
-        source: 'maxlong-live',
-        data: liveResult,
-      });
+      return NextResponse.json(
+        {
+          ok: true,
+          source: 'maxlong-live',
+          data: liveResult,
+        },
+        {
+          headers: {
+            'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+          },
+        }
+      );
     }
 
     // 2. Fallback aman ke screener lokal Kompas 100 via Yahoo Finance jika live endpoint offline
     const fallbackResult = await runKompas100Screener(force);
 
-    return NextResponse.json({
-      ok: true,
-      source: 'local-kompas100',
-      data: fallbackResult,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        source: 'local-kompas100',
+        data: fallbackResult,
+      },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+        },
+      }
+    );
   } catch (error: any) {
     console.error('Screener error:', error);
     return NextResponse.json(

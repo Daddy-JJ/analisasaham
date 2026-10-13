@@ -17,7 +17,7 @@ interface HeaderProps {
 
 const POPULAR_TICKERS = ['BBCA', 'BBRI', 'BMRI', 'TLKM', 'ASII', 'AMMN', 'BREN', 'IHSG'];
 
-export default function Header({
+function HeaderComponent({
   currentTicker,
   onSelectTicker,
   onTriggerPhase,
@@ -172,3 +172,5 @@ export default function Header({
     </header>
   );
 }
+
+export default React.memo(HeaderComponent);
